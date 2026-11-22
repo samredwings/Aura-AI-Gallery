@@ -16,6 +16,7 @@ import ai.sakana.aura.gallery.data.picker.PickerMediaMetadataReader
 import ai.sakana.aura.gallery.diagnostics.GalleryErrorReporter
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.repository.MediaRepository
+import ai.sakana.aura.gallery.worker.RecognitionWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,7 +53,7 @@ class RoomMediaRepository @Inject constructor(
     override suspend fun refreshMediaStore() = withRoomErrorReporting("refresh media store") {
         withContext(Dispatchers.IO) {
             val plan = MediaStoreReconciliationPolicy.createPlan(mediaStore.readMedia())
-            database.withTransaction {
+            val newlyDiscovered = database.withTransaction {
                 val existingByUri = dao.getRefreshStateSnapshot().associateBy(MediaItemRefreshState::contentUri)
                 for (mediaType in plan.mediaTypesToReconcile) {
                     dao.markMediaStoreUnavailable(mediaType)
@@ -68,7 +69,9 @@ class RoomMediaRepository @Inject constructor(
                     )
                 }
                 if (updated.isNotEmpty()) dao.upsertAll(updated)
+                updated.count { it.contentUri !in existingByUri }
             }
+            RecognitionWorker.enqueueIfNeeded(context, newlyDiscovered)
         }
     }
 
@@ -78,7 +81,14 @@ class RoomMediaRepository @Inject constructor(
                 .filter { it.scheme == ContentResolver.SCHEME_CONTENT }
                 .distinctBy(Uri::toString)
                 .map(::mapPickedUri)
-            if (picked.isNotEmpty()) dao.insertPicked(picked)
+            if (picked.isNotEmpty()) {
+                val existing = dao.getExistingContentUris(picked.map(MediaItemEntity::contentUri)).toSet()
+                dao.insertPicked(picked)
+                RecognitionWorker.enqueueIfNeeded(
+                    context,
+                    picked.count { it.contentUri !in existing },
+                )
+            }
         }
     }
 
