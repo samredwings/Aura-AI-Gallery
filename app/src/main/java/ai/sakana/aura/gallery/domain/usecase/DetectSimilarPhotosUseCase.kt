@@ -7,6 +7,7 @@ import ai.sakana.aura.gallery.data.deduplication.PerceptualHashGenerator
 import ai.sakana.aura.gallery.data.deduplication.SimilarPhotoDetector
 import ai.sakana.aura.gallery.data.deduplication.SimilarScanResult
 import ai.sakana.aura.gallery.data.local.MediaItemEntity
+import ai.sakana.aura.gallery.data.local.MediaItemDao
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -16,8 +17,20 @@ import javax.inject.Inject
  */
 class DetectSimilarPhotosUseCase @Inject constructor(
     @ApplicationContext context: Context,
+    private val mediaItemDao: MediaItemDao,
 ) {
     private val detector = SimilarPhotoDetector(PerceptualHashGenerator(AndroidGrayThumbnailSource(context)))
+
+    suspend fun scan(onProgress: (HashProgress) -> Unit = {}): SimilarScanResult {
+        val items = mediaItemDao.getAvailableNotTrashed()
+        val known = mediaItemDao.getKnownPerceptualHashes().associate { it.contentUri to it.perceptualHash }
+        return detector.detect(
+            items = items,
+            knownHashes = known,
+            onHashComputed = { uri, hash -> mediaItemDao.updatePerceptualHash(uri, hash) },
+            onProgress = onProgress,
+        )
+    }
 
     suspend operator fun invoke(
         items: List<MediaItemEntity>,
