@@ -105,6 +105,7 @@ interface MediaRecognitionDao {
                detected_faces.faceIndex AS faceIndex,
                detected_faces.yawDegrees AS yawDegrees,
                detected_faces.rollDegrees AS rollDegrees,
+               detected_faces.personClusterId AS personClusterId,
                face_embeddings.modelVersion AS modelVersion,
                face_embeddings.vectorBytes AS vectorBytes,
                face_embeddings.dimensions AS dimensions
