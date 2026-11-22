@@ -23,7 +23,7 @@ class DetectSimilarPhotosUseCase @Inject constructor(
 
     suspend fun scan(onProgress: (HashProgress) -> Unit = {}): SimilarScanResult {
         val items = mediaItemDao.getAvailableNotTrashed()
-        val known = mediaItemDao.getKnownPerceptualHashes().associate { it.contentUri to it.perceptualHash }
+        val known = mediaItemDao.getKnownPerceptualHashes().mapNotNull { row -> row.perceptualHash?.let { row.contentUri to it } }.toMap()
         return detector.detect(
             items = items,
             knownHashes = known,
