@@ -38,6 +38,10 @@ import ai.sakana.aura.gallery.domain.usecase.MergePersonsUseCase
 import ai.sakana.aura.gallery.domain.usecase.SplitPersonUseCase
 import ai.sakana.aura.gallery.domain.usecase.DeletePersonUseCase
 import ai.sakana.aura.gallery.worker.RecognitionWorker
+import ai.sakana.aura.gallery.data.deduplication.HashProgress
+import ai.sakana.aura.gallery.domain.usecase.DetectExactDuplicatesUseCase
+import ai.sakana.aura.gallery.domain.usecase.DetectSimilarPhotosUseCase
+import ai.sakana.aura.gallery.ui.dedup.DuplicateReviewUiState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -73,6 +77,8 @@ class GalleryViewModel @Inject constructor(
     private val mergePersonsUseCase: MergePersonsUseCase,
     private val splitPersonUseCase: SplitPersonUseCase,
     private val deletePersonUseCase: DeletePersonUseCase,
+    private val detectExactDuplicates: DetectExactDuplicatesUseCase,
+    private val detectSimilarPhotos: DetectSimilarPhotosUseCase,
     private val saveAiSet: SaveAiSetUseCase,
     private val renameAiSet: RenameAiSetUseCase,
     private val mergeAiSets: MergeAiSetsUseCase,
@@ -125,6 +131,9 @@ class GalleryViewModel @Inject constructor(
 
     private val _recognitionProgress = MutableStateFlow(RecognitionProgress())
     val recognitionProgress: StateFlow<RecognitionProgress> = _recognitionProgress.asStateFlow()
+
+    private val _duplicateReviewState = MutableStateFlow(DuplicateReviewUiState())
+    val duplicateReviewState: StateFlow<DuplicateReviewUiState> = _duplicateReviewState.asStateFlow()
 
     private val refreshRequestCoalescer = RefreshRequestCoalescer()
     private var refreshJob: Job? = null
@@ -286,6 +295,112 @@ class GalleryViewModel @Inject constructor(
                 total = items.size,
                 error = "Analysis could not be queued. Check background-work permissions and try again.",
             )
+        }
+    }
+
+    fun scanExactDuplicates() {
+        if (_duplicateReviewState.value.isScanning) return
+        viewModelScope.launch {
+            _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                isScanning = true,
+                progressDone = 0,
+                progressTotal = 0,
+                progressLabel = "Hashing exact matches",
+                errorMessage = null,
+            )
+            try {
+                val result = detectExactDuplicates.scan { progress ->
+                    updateDuplicateProgress(progress, "Hashing exact matches")
+                }
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                    isScanning = false,
+                    progressDone = result.hashedCount + result.reusedHashCount,
+                    progressTotal = result.hashedCount + result.reusedHashCount,
+                    exactGroups = result.groups,
+                    hasScannedExact = true,
+                    errorMessage = if (result.unreadableUris.isNotEmpty()) {
+                        "${result.unreadableUris.size} media items could not be read; the rest of the scan completed."
+                    } else null,
+                )
+            } catch (cancelled: CancellationException) {
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(isScanning = false)
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.e(error, "Exact duplicate scan failed")
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                    isScanning = false,
+                    errorMessage = error.message ?: "Exact duplicate scan failed.",
+                )
+            }
+        }
+    }
+
+    fun scanSimilarPhotos() {
+        if (_duplicateReviewState.value.isScanning) return
+        viewModelScope.launch {
+            _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                isScanning = true,
+                progressDone = 0,
+                progressTotal = 0,
+                progressLabel = "Calculating perceptual hashes",
+                errorMessage = null,
+            )
+            try {
+                val result = detectSimilarPhotos.scan { progress ->
+                    updateDuplicateProgress(progress, "Calculating perceptual hashes")
+                }
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                    isScanning = false,
+                    progressDone = result.hashedCount + result.reusedHashCount,
+                    progressTotal = result.hashedCount + result.reusedHashCount,
+                    similarGroups = result.groups,
+                    hasScannedSimilar = true,
+                    errorMessage = if (result.failedUris.isNotEmpty()) {
+                        "${result.failedUris.size} media items could not be decoded; the rest of the scan completed."
+                    } else null,
+                )
+            } catch (cancelled: CancellationException) {
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(isScanning = false)
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.e(error, "Similar-photo scan failed")
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                    isScanning = false,
+                    errorMessage = error.message ?: "Similar-photo scan failed.",
+                )
+            }
+        }
+    }
+
+    private fun updateDuplicateProgress(progress: HashProgress, label: String) {
+        _duplicateReviewState.value = _duplicateReviewState.value.copy(
+            progressDone = progress.done,
+            progressTotal = progress.total,
+            progressLabel = label,
+        )
+    }
+
+    fun moveDuplicateCopiesToTrash(contentUris: List<String>) {
+        if (contentUris.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                contentUris.distinct().forEach { moveToTrash(it) }
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                    exactGroups = _duplicateReviewState.value.exactGroups.filterNot { group ->
+                        group.items.all { item -> item.contentUri in contentUris }
+                    },
+                    similarGroups = _duplicateReviewState.value.similarGroups.filterNot { group ->
+                        group.members.all { member -> member.item.contentUri in contentUris }
+                    },
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.e(error, "Could not move selected duplicate copies to Trash")
+                _duplicateReviewState.value = _duplicateReviewState.value.copy(
+                    errorMessage = error.message ?: "Could not move the selected copies to Trash.",
+                )
+            }
         }
     }
 
