@@ -29,6 +29,9 @@ interface MediaRecognitionDao {
     @Query("SELECT COUNT(*) FROM detected_faces")
     fun observeDetectedFaceCount(): Flow<Int>
 
+    @Query("SELECT * FROM detected_faces WHERE contentUri = :contentUri ORDER BY frameTimeMillis, faceIndex")
+    suspend fun getFacesForMedia(contentUri: String): List<DetectedFaceEntity>
+
     @Query("DELETE FROM detected_faces WHERE contentUri = :contentUri")
     suspend fun deleteFacesForMedia(contentUri: String)
 
@@ -88,6 +91,9 @@ interface MediaRecognitionDao {
 
     @Query("DELETE FROM person_clusters WHERE id = :personId")
     suspend fun deletePersonCluster(personId: Long): Int
+
+    @Query("DELETE FROM person_clusters WHERE id = :personId AND NOT EXISTS(SELECT 1 FROM detected_faces WHERE personClusterId = :personId)")
+    suspend fun deletePersonClusterIfEmpty(personId: Long): Int
 
     @Query("SELECT EXISTS(SELECT 1 FROM face_embeddings WHERE detectedFaceId = :faceId AND modelVersion = :modelVersion)")
     suspend fun hasFaceEmbedding(faceId: Long, modelVersion: String): Boolean
