@@ -13,10 +13,10 @@ class RoomHashStore @Inject constructor(
     override suspend fun availableItems(): List<MediaItemEntity> = dao.getAvailableNotTrashed()
 
     override suspend fun knownSha256(): Map<String, String> =
-        dao.getKnownSha256Hashes().associate { it.contentUri to it.sha256Hash }
+        dao.getKnownSha256Hashes().mapNotNull { row -> row.sha256Hash?.let { row.contentUri to it } }.toMap()
 
     override suspend fun knownPerceptualHashes(): Map<String, Long> =
-        dao.getKnownPerceptualHashes().associate { it.contentUri to it.perceptualHash }
+        dao.getKnownPerceptualHashes().mapNotNull { row -> row.perceptualHash?.let { row.contentUri to it } }.toMap()
 
     override suspend fun saveSha256(contentUri: String, sha256: String) {
         dao.updateSha256Hash(contentUri, sha256)
