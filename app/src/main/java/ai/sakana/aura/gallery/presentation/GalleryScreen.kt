@@ -332,8 +332,14 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     items = visibleItems,
                     faces = detectedFaces,
                     clusters = personClusters,
+                    savedPeople = savedPeople,
                     progress = recognitionProgress,
                     onAnalyze = { viewModel.analyzeLibrary(visibleItems) },
+                    onSavePerson = viewModel::savePerson,
+                    onRenamePerson = viewModel::renamePerson,
+                    onMergePersons = viewModel::mergePersons,
+                    onSplitPerson = viewModel::splitPerson,
+                    onDeletePerson = viewModel::deletePerson,
                     )
                 }
                 Destination.AI_SETS -> ScreenErrorBoundary(screenName = "AI Sets", onRetry = viewModel::refresh) {
