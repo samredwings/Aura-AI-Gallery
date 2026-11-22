@@ -80,6 +80,7 @@ import ai.sakana.aura.gallery.design.InstrumentSerif
 import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.ui.dedup.DuplicateReviewScreen
 import ai.sakana.aura.gallery.domain.recognition.AiSet
 import ai.sakana.aura.gallery.domain.recognition.AiSetRules
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
@@ -114,6 +115,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val personClusters by viewModel.personClusters.collectAsState()
     val savedPeople by viewModel.savedPeople.collectAsState()
     val recognitionProgress by viewModel.recognitionProgress.collectAsState()
+    val duplicateReviewState by viewModel.duplicateReviewState.collectAsState()
     var destination by remember { mutableStateOf(Destination.PHOTOS) }
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -358,8 +360,14 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onDismissError = viewModel::clearError,
                     )
                 }
-                Destination.OPTIMIZE -> ScreenErrorBoundary(screenName = "Optimize", errorMessage = error, onRetry = viewModel::refresh) {
-                    OptimizeScreen(visibleItems)
+                Destination.OPTIMIZE -> ScreenErrorBoundary(screenName = "Duplicate review", errorMessage = error, onRetry = viewModel::refresh) {
+                    DuplicateReviewScreen(
+                        state = duplicateReviewState,
+                        onBack = { destination = Destination.EXPLORE },
+                        onScanExact = viewModel::scanExactDuplicates,
+                        onScanSimilar = viewModel::scanSimilarPhotos,
+                        onMoveToTrash = viewModel::moveDuplicateCopiesToTrash,
+                    )
                 }
                 Destination.SETTINGS -> ScreenErrorBoundary(screenName = "Settings", errorMessage = error, onRetry = viewModel::refresh) {
                     SettingsScreen(context, visibleItems)

@@ -14,10 +14,25 @@ interface MediaItemDao {
     @Query("SELECT contentUri FROM media_items WHERE contentUri IN (:contentUris)")
     suspend fun getExistingContentUris(contentUris: List<String>): List<String>
 
+    @Query("SELECT * FROM media_items WHERE isAvailable = 1 AND isTrashed = 0")
+    suspend fun getAvailableNotTrashed(): List<MediaItemEntity>
+
+    @Query("SELECT contentUri, sha256Hash FROM media_items WHERE sha256Hash IS NOT NULL")
+    suspend fun getKnownSha256Hashes(): List<MediaItemSha256Row>
+
+    @Query("SELECT contentUri, perceptualHash FROM media_items WHERE perceptualHash IS NOT NULL")
+    suspend fun getKnownPerceptualHashes(): List<MediaItemPerceptualHashRow>
+
+    @Query("UPDATE media_items SET sha256Hash = :hash WHERE contentUri = :contentUri")
+    suspend fun updateSha256Hash(contentUri: String, hash: String): Int
+
+    @Query("UPDATE media_items SET perceptualHash = :hash WHERE contentUri = :contentUri")
+    suspend fun updatePerceptualHash(contentUri: String, hash: Long): Int
+
     @Query("SELECT * FROM media_items WHERE isAvailable = 1 AND isTrashed = 1 ORDER BY trashedAtEpochMillis DESC, id DESC")
     fun observeTrashed(): Flow<List<MediaItemEntity>>
 
-    @Query("SELECT id, contentUri, isFavorite, isTrashed, trashedAtEpochMillis FROM media_items")
+    @Query("SELECT id, contentUri, isFavorite, isTrashed, trashedAtEpochMillis, sizeBytes, dateModifiedEpochMillis, sha256Hash, perceptualHash FROM media_items")
     suspend fun getRefreshStateSnapshot(): List<MediaItemRefreshState>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

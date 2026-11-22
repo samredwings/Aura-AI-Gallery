@@ -121,8 +121,8 @@ internal fun SettingsScreen(context: Context, items: List<MediaItem>) {
             SettingsRow("Auto backup", "No photos or videos are being uploaded to the cloud.", "OFF")
 
             SettingsGroup("ON-DEVICE ANALYSIS")
-            SettingsRow("Face grouping", "Face detection and licensed embeddings are not active.", "PLANNED M4")
-            SettingsRow("Duplicate scan", "SHA-256 and dHash analysis has not run.", "PLANNED M2")
+            SettingsRow("Face grouping", "On-device People suggestions and saved identities are available under Explore. Review suggestions before saving.", "AVAILABLE")
+            SettingsRow("Duplicate scan", "Exact SHA-256 and similar-photo scans are available under Optimize. Review each group before moving copies to Trash.", "AVAILABLE")
 
             if (BuildConfig.DEBUG) {
                 SettingsGroup("DIAGNOSTICS")
