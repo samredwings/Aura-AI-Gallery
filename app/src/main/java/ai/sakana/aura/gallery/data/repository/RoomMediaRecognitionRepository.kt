@@ -103,10 +103,18 @@ class RoomMediaRecognitionRepository @Inject constructor(
                         analyzedAtEpochMillis = System.currentTimeMillis(),
                     )
                     database.withTransaction {
+                        val previousFaces = dao.getFacesForMedia(item.contentUri)
+                            .associateBy { it.frameTimeMillis to it.faceIndex }
+                        val affectedPersonIds = previousFaces.values.mapNotNull { it.personClusterId }.distinct()
                         dao.upsertSceneEmbedding(embedding)
                         dao.deleteFacesForMedia(item.contentUri)
                         if (result.detectedFaces.isNotEmpty()) {
-                            val faceIds = dao.insertFaces(result.detectedFaces.map(DetectedFace::toEntity))
+                            // Reuse stable face IDs and saved person assignments when the same
+                            // frame/face slot is detected again after a media refresh or re-analysis.
+                            val entities = result.detectedFaces.map { face ->
+                                face.toEntity(previousFaces[face.frameTimeMillis to face.faceIndex])
+                            }
+                            val faceIds = dao.insertFaces(entities)
                             val faceEmbeddings = result.detectedFaces.zip(faceIds).mapNotNull { (face, faceId) ->
                                 face.embeddingVector?.let { vector ->
                                     FaceEmbeddingEntity(
@@ -118,6 +126,10 @@ class RoomMediaRecognitionRepository @Inject constructor(
                                 }
                             }
                             if (faceEmbeddings.isNotEmpty()) dao.upsertFaceEmbeddings(faceEmbeddings)
+                        }
+                        affectedPersonIds.forEach { personId ->
+                            dao.refreshPersonClusterStats(personId)
+                            dao.deletePersonClusterIfEmpty(personId)
                         }
                     }
                     processed++
@@ -146,7 +158,8 @@ class RoomMediaRecognitionRepository @Inject constructor(
     ).joinToString("|")
 }
 
-private fun DetectedFace.toEntity() = DetectedFaceEntity(
+private fun DetectedFace.toEntity(previous: DetectedFaceEntity? = null) = DetectedFaceEntity(
+    id = previous?.id ?: 0L,
     contentUri = contentUri,
     frameTimeMillis = frameTimeMillis,
     faceIndex = faceIndex,
@@ -156,6 +169,7 @@ private fun DetectedFace.toEntity() = DetectedFaceEntity(
     bottomNormalized = bottomNormalized,
     yawDegrees = yawDegrees,
     rollDegrees = rollDegrees,
+    personClusterId = previous?.personClusterId,
 )
 
 private fun DetectedFaceEntity.toDomain() = DetectedFace(
