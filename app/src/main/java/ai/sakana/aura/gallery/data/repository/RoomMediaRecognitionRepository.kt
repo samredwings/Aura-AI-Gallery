@@ -22,11 +22,14 @@ import ai.sakana.aura.gallery.domain.repository.RecognitionSummary
 import dagger.Lazy
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import timber.log.Timber
 
 @Singleton
@@ -57,6 +60,7 @@ class RoomMediaRecognitionRepository @Inject constructor(
     override fun observePersonClusters(): Flow<List<PersonCluster>> =
         dao.observeFaceEmbeddings().map { rows ->
             val embeddings = rows.mapNotNull { row ->
+                if (row.personClusterId != null) return@mapNotNull null
                 if (row.modelVersion != SFaceFaceEmbedder.MODEL_VERSION) return@mapNotNull null
                 runCatching {
                     FaceIdentityEmbedding(
@@ -75,13 +79,14 @@ class RoomMediaRecognitionRepository @Inject constructor(
 
     override suspend fun analyze(
         items: List<MediaItem>,
-        onProgress: (completed: Int, total: Int) -> Unit,
+        onProgress: suspend (completed: Int, total: Int) -> Unit,
     ): RecognitionSummary = withContext(Dispatchers.IO) {
         var processed = 0
         var alreadyAnalyzed = 0
         var failed = 0
         val total = items.size
-        items.forEachIndexed { index, item ->
+        for ((index, item) in items.withIndex()) {
+            currentCoroutineContext().ensureActive()
             val fingerprint = item.sourceFingerprint()
             val existing = dao.getSceneEmbedding(item.contentUri)
             if (existing != null && existing.modelVersion == OnDeviceMediaAnalyzer.MODEL_VERSION && existing.sourceFingerprint == fingerprint) {
@@ -98,10 +103,18 @@ class RoomMediaRecognitionRepository @Inject constructor(
                         analyzedAtEpochMillis = System.currentTimeMillis(),
                     )
                     database.withTransaction {
+                        val previousFaces = dao.getFacesForMedia(item.contentUri)
+                            .associateBy { it.frameTimeMillis to it.faceIndex }
+                        val affectedPersonIds = previousFaces.values.mapNotNull { it.personClusterId }.distinct()
                         dao.upsertSceneEmbedding(embedding)
                         dao.deleteFacesForMedia(item.contentUri)
                         if (result.detectedFaces.isNotEmpty()) {
-                            val faceIds = dao.insertFaces(result.detectedFaces.map(DetectedFace::toEntity))
+                            // Reuse stable face IDs and saved person assignments when the same
+                            // frame/face slot is detected again after a media refresh or re-analysis.
+                            val entities = result.detectedFaces.map { face ->
+                                face.toEntity(previousFaces[face.frameTimeMillis to face.faceIndex])
+                            }
+                            val faceIds = dao.insertFaces(entities)
                             val faceEmbeddings = result.detectedFaces.zip(faceIds).mapNotNull { (face, faceId) ->
                                 face.embeddingVector?.let { vector ->
                                     FaceEmbeddingEntity(
@@ -114,8 +127,14 @@ class RoomMediaRecognitionRepository @Inject constructor(
                             }
                             if (faceEmbeddings.isNotEmpty()) dao.upsertFaceEmbeddings(faceEmbeddings)
                         }
+                        affectedPersonIds.forEach { personId ->
+                            dao.refreshPersonClusterStats(personId)
+                            dao.deletePersonClusterIfEmpty(personId)
+                        }
                     }
                     processed++
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (error: Exception) {
                     failed++
                     Timber.w(error, "On-device analysis failed for one media item")
@@ -139,7 +158,8 @@ class RoomMediaRecognitionRepository @Inject constructor(
     ).joinToString("|")
 }
 
-private fun DetectedFace.toEntity() = DetectedFaceEntity(
+private fun DetectedFace.toEntity(previous: DetectedFaceEntity? = null) = DetectedFaceEntity(
+    id = previous?.id ?: 0L,
     contentUri = contentUri,
     frameTimeMillis = frameTimeMillis,
     faceIndex = faceIndex,
@@ -149,6 +169,7 @@ private fun DetectedFace.toEntity() = DetectedFaceEntity(
     bottomNormalized = bottomNormalized,
     yawDegrees = yawDegrees,
     rollDegrees = rollDegrees,
+    personClusterId = previous?.personClusterId,
 )
 
 private fun DetectedFaceEntity.toDomain() = DetectedFace(

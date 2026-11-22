@@ -14,6 +14,7 @@ data class RecognitionProgressState(
 
 interface PersonClusterRepository {
     fun observePersonClusters(): Flow<List<PersonClusterCandidate>>
+    suspend fun savePerson(candidate: PersonClusterCandidate, name: String): Long
     suspend fun getPersonFaces(personId: Long): List<DetectedFace>
     suspend fun renamePerson(personId: Long, newName: String)
     suspend fun mergePersons(sourcePersonId: Long, targetPersonId: Long)

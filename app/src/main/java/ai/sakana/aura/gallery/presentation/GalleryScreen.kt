@@ -112,6 +112,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val savedAiSets by viewModel.aiSets.collectAsState()
     val detectedFaces by viewModel.detectedFaces.collectAsState()
     val personClusters by viewModel.personClusters.collectAsState()
+    val savedPeople by viewModel.savedPeople.collectAsState()
     val recognitionProgress by viewModel.recognitionProgress.collectAsState()
     var destination by remember { mutableStateOf(Destination.PHOTOS) }
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
@@ -331,8 +332,14 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     items = visibleItems,
                     faces = detectedFaces,
                     clusters = personClusters,
+                    savedPeople = savedPeople,
                     progress = recognitionProgress,
                     onAnalyze = { viewModel.analyzeLibrary(visibleItems) },
+                    onSavePerson = viewModel::savePerson,
+                    onRenamePerson = viewModel::renamePerson,
+                    onMergePersons = viewModel::mergePersons,
+                    onSplitPerson = viewModel::splitPerson,
+                    onDeletePerson = viewModel::deletePerson,
                     )
                 }
                 Destination.AI_SETS -> ScreenErrorBoundary(screenName = "AI Sets", onRetry = viewModel::refresh) {

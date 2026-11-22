@@ -11,6 +11,9 @@ interface MediaItemDao {
     @Query("SELECT * FROM media_items WHERE isAvailable = 1 AND isTrashed = 0 ORDER BY dateTakenEpochMillis DESC, id DESC")
     fun observeAvailable(): Flow<List<MediaItemEntity>>
 
+    @Query("SELECT contentUri FROM media_items WHERE contentUri IN (:contentUris)")
+    suspend fun getExistingContentUris(contentUris: List<String>): List<String>
+
     @Query("SELECT * FROM media_items WHERE isAvailable = 1 AND isTrashed = 1 ORDER BY trashedAtEpochMillis DESC, id DESC")
     fun observeTrashed(): Flow<List<MediaItemEntity>>
 

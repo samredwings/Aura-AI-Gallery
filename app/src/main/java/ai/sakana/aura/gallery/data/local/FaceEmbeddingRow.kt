@@ -8,6 +8,7 @@ data class FaceEmbeddingRow(
     val faceIndex: Int,
     val yawDegrees: Float,
     val rollDegrees: Float,
+    val personClusterId: Long?,
     val modelVersion: String,
     val vectorBytes: ByteArray,
     val dimensions: Int,

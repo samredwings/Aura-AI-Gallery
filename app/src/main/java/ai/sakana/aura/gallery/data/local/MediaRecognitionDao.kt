@@ -29,6 +29,9 @@ interface MediaRecognitionDao {
     @Query("SELECT COUNT(*) FROM detected_faces")
     fun observeDetectedFaceCount(): Flow<Int>
 
+    @Query("SELECT * FROM detected_faces WHERE contentUri = :contentUri ORDER BY frameTimeMillis, faceIndex")
+    suspend fun getFacesForMedia(contentUri: String): List<DetectedFaceEntity>
+
     @Query("DELETE FROM detected_faces WHERE contentUri = :contentUri")
     suspend fun deleteFacesForMedia(contentUri: String)
 
@@ -38,6 +41,69 @@ interface MediaRecognitionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertFaceEmbeddings(embeddings: List<FaceEmbeddingEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertPersonCluster(cluster: PersonClusterEntity): Long
+
+    @Query("""
+        SELECT person_clusters.id AS personId,
+               person_clusters.name AS name,
+               person_clusters.representativeFaceId AS representativeFaceId,
+               person_clusters.confidence AS confidence,
+               person_clusters.memberCount AS memberCount,
+               detected_faces.id AS faceId,
+               detected_faces.contentUri AS contentUri,
+               face_embeddings.modelVersion AS modelVersion,
+               face_embeddings.vectorBytes AS vectorBytes,
+               face_embeddings.dimensions AS dimensions
+        FROM person_clusters
+        LEFT JOIN detected_faces ON detected_faces.personClusterId = person_clusters.id
+        LEFT JOIN face_embeddings ON face_embeddings.detectedFaceId = detected_faces.id
+        ORDER BY person_clusters.id, detected_faces.id
+    """)
+    fun observeSavedPersonClusters(): Flow<List<PersonClusterFaceRow>>
+
+    @Query("SELECT * FROM detected_faces WHERE personClusterId = :personId ORDER BY contentUri, frameTimeMillis, faceIndex")
+    suspend fun getFacesForPerson(personId: Long): List<DetectedFaceEntity>
+
+    @Query("SELECT * FROM person_clusters WHERE id = :personId LIMIT 1")
+    suspend fun getPersonCluster(personId: Long): PersonClusterEntity?
+
+    @Query("UPDATE person_clusters SET name = :name WHERE id = :personId")
+    suspend fun renamePersonCluster(personId: Long, name: String): Int
+
+    @Query("UPDATE detected_faces SET personClusterId = :personId WHERE id IN (:faceIds) AND personClusterId IS NULL")
+    suspend fun assignUnassignedFaces(personId: Long, faceIds: List<Long>): Int
+
+    @Query("UPDATE detected_faces SET personClusterId = :targetPersonId WHERE id = :faceId AND personClusterId = :sourcePersonId")
+    suspend fun moveFaceToPerson(sourcePersonId: Long, targetPersonId: Long, faceId: Long): Int
+
+    @Query("UPDATE detected_faces SET personClusterId = :targetPersonId WHERE personClusterId = :sourcePersonId")
+    suspend fun movePersonFaces(sourcePersonId: Long, targetPersonId: Long): Int
+
+    @Query("UPDATE detected_faces SET personClusterId = NULL WHERE id = :faceId AND personClusterId = :personId")
+    suspend fun detachFaceFromPerson(personId: Long, faceId: Long): Int
+
+    @Query("UPDATE detected_faces SET personClusterId = NULL WHERE personClusterId = :personId")
+    suspend fun clearPersonFaces(personId: Long): Int
+
+    @Query("UPDATE person_clusters SET memberCount = (SELECT COUNT(*) FROM detected_faces WHERE personClusterId = :personId), representativeFaceId = COALESCE((SELECT MIN(id) FROM detected_faces WHERE personClusterId = :personId), representativeFaceId) WHERE id = :personId")
+    suspend fun refreshPersonClusterStats(personId: Long): Int
+
+    @Query("DELETE FROM person_clusters WHERE id = :personId")
+    suspend fun deletePersonCluster(personId: Long): Int
+
+    @Query("DELETE FROM person_clusters WHERE id = :personId AND NOT EXISTS(SELECT 1 FROM detected_faces WHERE personClusterId = :personId)")
+    suspend fun deletePersonClusterIfEmpty(personId: Long): Int
+
+    @Query("SELECT EXISTS(SELECT 1 FROM face_embeddings WHERE detectedFaceId = :faceId AND modelVersion = :modelVersion)")
+    suspend fun hasFaceEmbedding(faceId: Long, modelVersion: String): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRecognitionProgress(progress: RecognitionProgressEntity)
+
+    @Query("SELECT * FROM recognition_progress WHERE id = 1 LIMIT 1")
+    suspend fun getRecognitionProgress(): RecognitionProgressEntity?
+
     @Query("""
         SELECT detected_faces.id AS faceId,
                detected_faces.contentUri AS contentUri,
@@ -45,6 +111,7 @@ interface MediaRecognitionDao {
                detected_faces.faceIndex AS faceIndex,
                detected_faces.yawDegrees AS yawDegrees,
                detected_faces.rollDegrees AS rollDegrees,
+               detected_faces.personClusterId AS personClusterId,
                face_embeddings.modelVersion AS modelVersion,
                face_embeddings.vectorBytes AS vectorBytes,
                face_embeddings.dimensions AS dimensions

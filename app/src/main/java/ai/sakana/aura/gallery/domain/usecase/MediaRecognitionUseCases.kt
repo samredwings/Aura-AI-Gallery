@@ -27,6 +27,6 @@ class AnalyzeMediaLibraryUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(
         items: List<MediaItem>,
-        onProgress: (completed: Int, total: Int) -> Unit,
+        onProgress: suspend (completed: Int, total: Int) -> Unit,
     ) = repository.analyze(items, onProgress)
 }

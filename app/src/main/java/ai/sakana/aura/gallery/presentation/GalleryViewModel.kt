@@ -1,9 +1,13 @@
 package ai.sakana.aura.gallery.presentation
 
+import android.content.Context
 import android.net.Uri
 import android.database.sqlite.SQLiteException
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.Observer
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import androidx.lifecycle.viewModelScope
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.usecase.ImportPickedMediaUseCase
@@ -13,7 +17,6 @@ import ai.sakana.aura.gallery.domain.usecase.ToggleFavoriteUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveTrashedMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.MoveToTrashUseCase
 import ai.sakana.aura.gallery.domain.usecase.RestoreFromTrashUseCase
-import ai.sakana.aura.gallery.domain.usecase.AnalyzeMediaLibraryUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveSceneClustersUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveDetectedFacesUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObservePersonClustersUseCase
@@ -27,6 +30,15 @@ import ai.sakana.aura.gallery.domain.usecase.DeleteAiSetUseCase
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import ai.sakana.aura.gallery.domain.recognition.PersonCluster
+import ai.sakana.aura.gallery.domain.recognition.PersonClusterCandidate
+import ai.sakana.aura.gallery.domain.usecase.ObserveSavedPeopleUseCase
+import ai.sakana.aura.gallery.domain.usecase.SavePersonUseCase
+import ai.sakana.aura.gallery.domain.usecase.RenamePersonUseCase
+import ai.sakana.aura.gallery.domain.usecase.MergePersonsUseCase
+import ai.sakana.aura.gallery.domain.usecase.SplitPersonUseCase
+import ai.sakana.aura.gallery.domain.usecase.DeletePersonUseCase
+import ai.sakana.aura.gallery.worker.RecognitionWorker
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -43,6 +55,7 @@ import ai.sakana.aura.gallery.diagnostics.GalleryErrorReporter
 
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
+    @ApplicationContext private val applicationContext: Context,
     observeMedia: ObserveMediaUseCase,
     private val refreshMediaStore: RefreshMediaStoreUseCase,
     private val importPickedMedia: ImportPickedMediaUseCase,
@@ -50,11 +63,16 @@ class GalleryViewModel @Inject constructor(
     observeTrashedMedia: ObserveTrashedMediaUseCase,
     private val moveToTrash: MoveToTrashUseCase,
     private val restoreFromTrash: RestoreFromTrashUseCase,
-    private val analyzeMediaLibrary: AnalyzeMediaLibraryUseCase,
     observeSceneClusters: ObserveSceneClustersUseCase,
     observeDetectedFaces: ObserveDetectedFacesUseCase,
     observePersonClusters: ObservePersonClustersUseCase,
+    observeSavedPeople: ObserveSavedPeopleUseCase,
     observeAiSets: ObserveAiSetsUseCase,
+    private val savePersonUseCase: SavePersonUseCase,
+    private val renamePersonUseCase: RenamePersonUseCase,
+    private val mergePersonsUseCase: MergePersonsUseCase,
+    private val splitPersonUseCase: SplitPersonUseCase,
+    private val deletePersonUseCase: DeletePersonUseCase,
     private val saveAiSet: SaveAiSetUseCase,
     private val renameAiSet: RenameAiSetUseCase,
     private val mergeAiSets: MergeAiSetsUseCase,
@@ -83,6 +101,11 @@ class GalleryViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
     )
+    val savedPeople: StateFlow<List<PersonClusterCandidate>> = observeSavedPeople().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
     val trashedItems = observeTrashedMedia().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -106,8 +129,50 @@ class GalleryViewModel @Inject constructor(
     private val refreshRequestCoalescer = RefreshRequestCoalescer()
     private var refreshJob: Job? = null
     private var hasCompletedMediaStoreScan = false
+    private val recognitionWorkManager = WorkManager.getInstance(applicationContext)
+    private val recognitionWorkObserver = Observer<List<WorkInfo>> { workInfos ->
+        val work = workInfos?.firstOrNull()
+        if (work == null) {
+            if (!_recognitionProgress.value.isRunning) _recognitionProgress.value = RecognitionProgress()
+            return@Observer
+        }
+        val done = work.progress.getInt(
+            RecognitionWorker.KEY_COMPLETED,
+            work.outputData.getInt(RecognitionWorker.KEY_COMPLETED, 0),
+        )
+        val total = work.progress.getInt(
+            RecognitionWorker.KEY_TOTAL,
+            work.outputData.getInt(RecognitionWorker.KEY_TOTAL, _recognitionProgress.value.total),
+        )
+        when (work.state) {
+            WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED, WorkInfo.State.RUNNING -> {
+                _recognitionProgress.value = RecognitionProgress(
+                    completed = done,
+                    total = total,
+                    isRunning = true,
+                )
+            }
+            WorkInfo.State.SUCCEEDED, WorkInfo.State.FAILED -> {
+                val data = work.outputData
+                _recognitionProgress.value = RecognitionProgress(
+                    completed = data.getInt(RecognitionWorker.KEY_COMPLETED, done),
+                    total = data.getInt(RecognitionWorker.KEY_TOTAL, total),
+                    processed = data.getInt(RecognitionWorker.KEY_PROCESSED, 0),
+                    alreadyAnalyzed = data.getInt(RecognitionWorker.KEY_CACHED, 0),
+                    failed = data.getInt(RecognitionWorker.KEY_FAILED, 0),
+                    isRunning = false,
+                    error = if (work.state == WorkInfo.State.FAILED) "Recognition needs attention. Check media access and retry." else null,
+                )
+            }
+            WorkInfo.State.CANCELLED -> {
+                _recognitionProgress.value = _recognitionProgress.value.copy(isRunning = false)
+            }
+        }
+    }
 
     init {
+        recognitionWorkManager.getWorkInfosForUniqueWorkLiveData(RecognitionWorker.WORK_NAME)
+            .observeForever(recognitionWorkObserver);
         viewModelScope.launch {
             galleryErrorReporter.message.collect { message ->
                 if (!message.isNullOrBlank()) _errorMessage.value = message
@@ -212,32 +277,65 @@ class GalleryViewModel @Inject constructor(
 
     fun analyzeLibrary(items: List<MediaItem>) {
         if (_recognitionProgress.value.isRunning || items.isEmpty()) return
-        viewModelScope.launch {
+        try {
             _recognitionProgress.value = RecognitionProgress(isRunning = true, total = items.size)
+            RecognitionWorker.enqueueManual(applicationContext)
+        } catch (error: Exception) {
+            Timber.e(error, "Unable to queue on-device media analysis")
+            _recognitionProgress.value = RecognitionProgress(
+                total = items.size,
+                error = "Analysis could not be queued. Check background-work permissions and try again.",
+            )
+        }
+    }
+
+    fun savePerson(cluster: PersonCluster) = launchPersonOperation("save person") {
+        val faceIds = cluster.faceIds.distinct()
+        require(faceIds.isNotEmpty()) { "This suggestion has no face samples to save." }
+        val candidate = PersonClusterCandidate(
+            representativeFaceId = faceIds.first(),
+            faceIds = faceIds,
+            mediaUris = cluster.mediaUris.distinct(),
+            averageSimilarity = cluster.averageSimilarity,
+        )
+        val name = "Person ${savedPeople.value.size + 1}"
+        savePersonUseCase(candidate, name)
+    }
+
+    fun renamePerson(personId: Long, name: String) = launchPersonOperation("rename person") {
+        renamePersonUseCase(personId, name)
+    }
+
+    fun mergePersons(sourcePersonId: Long, targetPersonId: Long) = launchPersonOperation("merge people") {
+        mergePersonsUseCase(sourcePersonId, targetPersonId)
+    }
+
+    fun splitPerson(personId: Long, faceId: Long) = launchPersonOperation("split person") {
+        splitPersonUseCase(personId, faceId)
+    }
+
+    fun deletePerson(personId: Long) = launchPersonOperation("delete person") {
+        deletePersonUseCase(personId)
+    }
+
+    private fun launchPersonOperation(label: String, operation: suspend () -> Unit) {
+        viewModelScope.launch {
             try {
-                val summary = analyzeMediaLibrary(items) { completed, total ->
-                    _recognitionProgress.value = _recognitionProgress.value.copy(
-                        completed = completed,
-                        total = total,
-                    )
-                }
-                _recognitionProgress.value = RecognitionProgress(
-                    completed = items.size,
-                    total = items.size,
-                    processed = summary.processed,
-                    alreadyAnalyzed = summary.alreadyAnalyzed,
-                    failed = summary.failed,
-                    isRunning = false,
-                )
-                Timber.i("On-device media analysis finished: processed=%d cached=%d failed=%d", summary.processed, summary.alreadyAnalyzed, summary.failed)
+                operation()
+                Timber.i("Person operation completed: %s", label)
             } catch (cancelled: CancellationException) {
-                _recognitionProgress.value = _recognitionProgress.value.copy(isRunning = false)
                 throw cancelled
             } catch (error: Exception) {
-                Timber.e(error, "On-device media analysis failed")
-                _recognitionProgress.value = _recognitionProgress.value.copy(isRunning = false, error = "Analysis stopped. Check media access and try again.")
+                Timber.w(error, "Person operation failed: %s", label)
+                _errorMessage.value = error.message ?: "The saved person couldn't be updated."
             }
         }
+    }
+
+    override fun onCleared() {
+        recognitionWorkManager.getWorkInfosForUniqueWorkLiveData(RecognitionWorker.WORK_NAME)
+            .removeObserver(recognitionWorkObserver)
+        super.onCleared()
     }
 
     fun saveAiSet(name: String, mediaUris: List<String>) = launchAiSetOperation("save AI Set") {
