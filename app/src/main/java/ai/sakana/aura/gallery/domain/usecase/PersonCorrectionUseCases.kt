@@ -6,9 +6,23 @@ import ai.sakana.aura.gallery.data.recognition.VideoFrameExtractor
 import ai.sakana.aura.gallery.data.recognition.analyzeVideoFramesWithDedup
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
+import ai.sakana.aura.gallery.domain.recognition.PersonClusterCandidate
 import ai.sakana.aura.gallery.domain.repository.PersonClusterRepository
 import android.graphics.Bitmap
 import javax.inject.Inject
+
+class ObserveSavedPeopleUseCase @Inject constructor(
+    private val repository: PersonClusterRepository,
+) {
+    operator fun invoke() = repository.observePersonClusters()
+}
+
+class SavePersonUseCase @Inject constructor(
+    private val repository: PersonClusterRepository,
+) {
+    suspend operator fun invoke(candidate: PersonClusterCandidate, name: String): Long =
+        repository.savePerson(candidate, name)
+}
 
 class GetPersonFacesUseCase @Inject constructor(
     private val repository: PersonClusterRepository,
