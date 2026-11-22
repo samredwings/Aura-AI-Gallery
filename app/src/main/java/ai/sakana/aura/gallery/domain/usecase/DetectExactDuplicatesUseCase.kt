@@ -23,7 +23,7 @@ class DetectExactDuplicatesUseCase @Inject constructor(
 
     suspend fun scan(onProgress: (HashProgress) -> Unit = {}): ExactDuplicateScanResult {
         val items = mediaItemDao.getAvailableNotTrashed()
-        val known = mediaItemDao.getKnownSha256Hashes().associate { it.contentUri to it.sha256Hash }
+        val known = mediaItemDao.getKnownSha256Hashes().mapNotNull { row -> row.sha256Hash?.let { row.contentUri to it } }.toMap()
         return detector.detect(
             items = items,
             knownHashes = known,
