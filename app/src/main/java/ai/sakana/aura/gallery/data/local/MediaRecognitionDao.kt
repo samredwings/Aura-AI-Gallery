@@ -71,6 +71,9 @@ interface MediaRecognitionDao {
     @Query("UPDATE detected_faces SET personClusterId = :personId WHERE id IN (:faceIds) AND personClusterId IS NULL")
     suspend fun assignUnassignedFaces(personId: Long, faceIds: List<Long>): Int
 
+    @Query("UPDATE detected_faces SET personClusterId = :targetPersonId WHERE id = :faceId AND personClusterId = :sourcePersonId")
+    suspend fun moveFaceToPerson(sourcePersonId: Long, targetPersonId: Long, faceId: Long): Int
+
     @Query("UPDATE detected_faces SET personClusterId = :targetPersonId WHERE personClusterId = :sourcePersonId")
     suspend fun movePersonFaces(sourcePersonId: Long, targetPersonId: Long): Int
 
