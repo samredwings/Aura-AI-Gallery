@@ -60,6 +60,7 @@ class RoomMediaRecognitionRepository @Inject constructor(
     override fun observePersonClusters(): Flow<List<PersonCluster>> =
         dao.observeFaceEmbeddings().map { rows ->
             val embeddings = rows.mapNotNull { row ->
+                if (row.personClusterId != null) return@mapNotNull null
                 if (row.modelVersion != SFaceFaceEmbedder.MODEL_VERSION) return@mapNotNull null
                 runCatching {
                     FaceIdentityEmbedding(
