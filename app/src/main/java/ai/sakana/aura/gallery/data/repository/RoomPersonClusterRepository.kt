@@ -68,9 +68,8 @@ class RoomPersonClusterRepository @Inject constructor(
                 ),
             )
             val assigned = dao.assignUnassignedFaces(id, faceIds)
-            if (assigned == 0) {
-                dao.deletePersonCluster(id)
-                throw IllegalStateException("These face samples are already assigned to saved people.")
+            check(assigned == faceIds.size) {
+                "Some face samples are already assigned to saved people; no partial identity was saved."
             }
             dao.refreshPersonClusterStats(id)
             id
