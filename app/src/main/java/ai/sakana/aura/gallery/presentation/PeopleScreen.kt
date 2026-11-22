@@ -81,6 +81,7 @@ import ai.sakana.aura.gallery.domain.recognition.AiSet
 import ai.sakana.aura.gallery.domain.recognition.AiSetRules
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import ai.sakana.aura.gallery.domain.recognition.PersonCluster
+import ai.sakana.aura.gallery.domain.recognition.PersonClusterCandidate
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
 import ai.sakana.aura.gallery.platform.MediaAccessLevel
 import ai.sakana.aura.gallery.platform.MediaPermissionPolicy
@@ -94,9 +95,19 @@ internal fun PeopleScreen(
     items: List<MediaItem>,
     faces: List<DetectedFace>,
     clusters: List<PersonCluster>,
+    savedPeople: List<PersonClusterCandidate>,
     progress: RecognitionProgress,
     onAnalyze: () -> Unit,
+    onSavePerson: (PersonCluster) -> Unit,
+    onRenamePerson: (Long, String) -> Unit,
+    onMergePersons: (Long, Long) -> Unit,
+    onSplitPerson: (Long, Long) -> Unit,
+    onDeletePerson: (Long) -> Unit,
 ) {
+    var renameTarget by remember { mutableStateOf<PersonClusterCandidate?>(null) }
+    var renameValue by remember { mutableStateOf("") }
+    var mergeTarget by remember { mutableStateOf<PersonClusterCandidate?>(null) }
+    var deleteTarget by remember { mutableStateOf<PersonClusterCandidate?>(null) }
     val mediaByUri = remember(items) { items.associateBy(MediaItem::contentUri) }
     val detectedMedia = remember(faces) { faces.groupBy(DetectedFace::contentUri) }
     Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
@@ -144,6 +155,44 @@ internal fun PeopleScreen(
                 }
             }
 
+            Text("SAVED PEOPLE", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 1.sp)
+            if (savedPeople.isEmpty()) {
+                Text("Review a suggestion below and save it to create a persistent person.", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+            } else {
+                savedPeople.forEach { person ->
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AuraTokens.Surface1).padding(11.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(person.name ?: "Person", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Text("${person.mediaUris.size} media · ${person.faceIds.size} face samples", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp)
+                            }
+                            Text("SAVED", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 9.sp)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            TextButton(onClick = {
+                                renameTarget = person
+                                renameValue = person.name.orEmpty()
+                            }) { Text("Rename") }
+                            TextButton(onClick = { mergeTarget = person }, enabled = savedPeople.size > 1) { Text("Merge") }
+                            TextButton(onClick = { deleteTarget = person }) { Text("Remove") }
+                        }
+                        if (person.faceIds.size > 1) {
+                            Text("SPLIT A FACE INTO A NEW PERSON", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 8.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                person.faceIds.drop(1).forEach { faceId ->
+                                    TextButton(onClick = { onSplitPerson(person.clusterId, faceId) }) {
+                                        Text("Split #${faceId}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Text("SUGGESTED REPEATED PEOPLE", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 1.sp)
             if (clusters.isEmpty()) {
                 EmptyIndexState(
@@ -157,6 +206,7 @@ internal fun PeopleScreen(
                         index = index,
                         cluster = cluster,
                         mediaByUri = mediaByUri,
+                        onSave = { onSavePerson(cluster) },
                     )
                 }
             }
@@ -188,6 +238,59 @@ internal fun PeopleScreen(
             )
         }
     }
+
+    renameTarget?.let { person ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Rename person") },
+            text = {
+                OutlinedTextField(
+                    value = renameValue,
+                    onValueChange = { renameValue = it },
+                    singleLine = true,
+                    label = { Text("Person name") },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRenamePerson(person.clusterId, renameValue)
+                    renameTarget = null
+                }, enabled = renameValue.isNotBlank()) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } },
+        )
+    }
+    mergeTarget?.let { source ->
+        AlertDialog(
+            onDismissRequest = { mergeTarget = null },
+            title = { Text("Merge into which person?") },
+            text = {
+                Column {
+                    savedPeople.filterNot { it.clusterId == source.clusterId }.forEach { target ->
+                        TextButton(onClick = {
+                            onMergePersons(source.clusterId, target.clusterId)
+                            mergeTarget = null
+                        }) { Text(target.name ?: "Person") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { mergeTarget = null }) { Text("Cancel") } },
+        )
+    }
+    deleteTarget?.let { person ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Remove saved person?") },
+            text = { Text("This removes the saved identity grouping only. Original photos and videos will remain untouched.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeletePerson(person.clusterId)
+                    deleteTarget = null
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
@@ -195,6 +298,7 @@ internal fun PersonClusterCard(
     index: Int,
     cluster: PersonCluster,
     mediaByUri: Map<String, MediaItem>,
+    onSave: () -> Unit,
 ) {
     val previews = cluster.mediaUris.mapNotNull(mediaByUri::get).take(4)
     Column(
@@ -231,5 +335,6 @@ internal fun PersonClusterCard(
             fontSize = 10.sp,
             lineHeight = 14.sp,
         )
+        Button(onClick = onSave, modifier = Modifier.fillMaxWidth()) { Text("SAVE AS PERSON") }
     }
 }
