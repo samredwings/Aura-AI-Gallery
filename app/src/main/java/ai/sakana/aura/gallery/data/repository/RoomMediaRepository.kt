@@ -17,7 +17,7 @@ import ai.sakana.aura.gallery.diagnostics.GalleryErrorReporter
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.repository.MediaRepository
 import ai.sakana.aura.gallery.worker.RecognitionWorker
-import ai.sakana.aura.gallery.data.deduplication.DedupWorker
+import ai.sakana.aura.gallery.worker.DedupWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
