@@ -10,6 +10,7 @@ data class MediaItemRefreshState(
     val isFavorite: Boolean,
     val isTrashed: Boolean,
     val trashedAtEpochMillis: Long,
+    val sizeBytes: Long,
     val dateModifiedEpochMillis: Long,
     val sha256Hash: String?,
     val perceptualHash: Long?,
