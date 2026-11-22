@@ -17,6 +17,7 @@ import ai.sakana.aura.gallery.diagnostics.GalleryErrorReporter
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.repository.MediaRepository
 import ai.sakana.aura.gallery.worker.RecognitionWorker
+import ai.sakana.aura.gallery.data.deduplication.DedupWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -66,12 +67,15 @@ class RoomMediaRepository @Inject constructor(
                         isAvailable = true,
                         isTrashed = existing?.isTrashed ?: false,
                         trashedAtEpochMillis = existing?.trashedAtEpochMillis ?: 0L,
+                        sha256Hash = existing?.takeIf { it.dateModifiedEpochMillis == fresh.dateModifiedEpochMillis }?.sha256Hash,
+                        perceptualHash = existing?.takeIf { it.dateModifiedEpochMillis == fresh.dateModifiedEpochMillis }?.perceptualHash,
                     )
                 }
                 if (updated.isNotEmpty()) dao.upsertAll(updated)
                 updated.count { it.contentUri !in existingByUri }
             }
             RecognitionWorker.enqueueIfNeeded(context, newlyDiscovered)
+            if (newlyDiscovered > 0) DedupWorker.schedule(context)
         }
     }
 
