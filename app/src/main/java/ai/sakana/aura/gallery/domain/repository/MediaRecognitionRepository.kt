@@ -16,5 +16,5 @@ interface MediaRecognitionRepository {
     fun observeSceneClusters(): Flow<List<SceneCluster>>
     fun observeDetectedFaces(): Flow<List<DetectedFace>>
     fun observePersonClusters(): Flow<List<PersonCluster>>
-    suspend fun analyze(items: List<MediaItem>, onProgress: (completed: Int, total: Int) -> Unit): RecognitionSummary
+    suspend fun analyze(items: List<MediaItem>, onProgress: suspend (completed: Int, total: Int) -> Unit): RecognitionSummary
 }
