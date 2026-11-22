@@ -6,6 +6,7 @@ import ai.sakana.aura.gallery.data.deduplication.ExactDuplicateDetector
 import ai.sakana.aura.gallery.data.deduplication.ExactDuplicateScanResult
 import ai.sakana.aura.gallery.data.deduplication.HashProgress
 import ai.sakana.aura.gallery.data.local.MediaItemEntity
+import ai.sakana.aura.gallery.data.local.MediaItemDao
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -16,8 +17,20 @@ import javax.inject.Inject
  */
 class DetectExactDuplicatesUseCase @Inject constructor(
     @ApplicationContext context: Context,
+    private val mediaItemDao: MediaItemDao,
 ) {
     private val detector = ExactDuplicateDetector(ContentResolverByteSource(context.contentResolver))
+
+    suspend fun scan(onProgress: (HashProgress) -> Unit = {}): ExactDuplicateScanResult {
+        val items = mediaItemDao.getAvailableNotTrashed()
+        val known = mediaItemDao.getKnownSha256Hashes().associate { it.contentUri to it.sha256Hash }
+        return detector.detect(
+            items = items,
+            knownHashes = known,
+            onHashComputed = { uri, hash -> mediaItemDao.updateSha256Hash(uri, hash) },
+            onProgress = onProgress,
+        )
+    }
 
     suspend operator fun invoke(
         items: List<MediaItemEntity>,
