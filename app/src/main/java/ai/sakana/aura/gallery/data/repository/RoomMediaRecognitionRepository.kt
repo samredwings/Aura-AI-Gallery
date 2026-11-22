@@ -22,11 +22,14 @@ import ai.sakana.aura.gallery.domain.repository.RecognitionSummary
 import dagger.Lazy
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import timber.log.Timber
 
 @Singleton
@@ -75,13 +78,14 @@ class RoomMediaRecognitionRepository @Inject constructor(
 
     override suspend fun analyze(
         items: List<MediaItem>,
-        onProgress: (completed: Int, total: Int) -> Unit,
+        onProgress: suspend (completed: Int, total: Int) -> Unit,
     ): RecognitionSummary = withContext(Dispatchers.IO) {
         var processed = 0
         var alreadyAnalyzed = 0
         var failed = 0
         val total = items.size
-        items.forEachIndexed { index, item ->
+        for ((index, item) in items.withIndex()) {
+            currentCoroutineContext().ensureActive()
             val fingerprint = item.sourceFingerprint()
             val existing = dao.getSceneEmbedding(item.contentUri)
             if (existing != null && existing.modelVersion == OnDeviceMediaAnalyzer.MODEL_VERSION && existing.sourceFingerprint == fingerprint) {
@@ -116,6 +120,8 @@ class RoomMediaRecognitionRepository @Inject constructor(
                         }
                     }
                     processed++
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (error: Exception) {
                     failed++
                     Timber.w(error, "On-device analysis failed for one media item")
