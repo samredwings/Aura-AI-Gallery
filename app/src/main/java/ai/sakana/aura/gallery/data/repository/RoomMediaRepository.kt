@@ -67,8 +67,8 @@ class RoomMediaRepository @Inject constructor(
                         isAvailable = true,
                         isTrashed = existing?.isTrashed ?: false,
                         trashedAtEpochMillis = existing?.trashedAtEpochMillis ?: 0L,
-                        sha256Hash = existing?.takeIf { it.dateModifiedEpochMillis == fresh.dateModifiedEpochMillis }?.sha256Hash,
-                        perceptualHash = existing?.takeIf { it.dateModifiedEpochMillis == fresh.dateModifiedEpochMillis }?.perceptualHash,
+                        sha256Hash = existing?.takeIf { it.sizeBytes == fresh.sizeBytes && it.dateModifiedEpochMillis == fresh.dateModifiedEpochMillis }?.sha256Hash,
+                        perceptualHash = existing?.takeIf { it.sizeBytes == fresh.sizeBytes && it.dateModifiedEpochMillis == fresh.dateModifiedEpochMillis }?.perceptualHash,
                     )
                 }
                 if (updated.isNotEmpty()) dao.upsertAll(updated)
