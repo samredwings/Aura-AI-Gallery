@@ -6,8 +6,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, FaceEmbeddingEntity::class, AiSetEntity::class, AiSetMembershipEntity::class, PersonClusterEntity::class, EditHistoryEntity::class],
-    version = 8,
+    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, FaceEmbeddingEntity::class, AiSetEntity::class, AiSetMembershipEntity::class, PersonClusterEntity::class, EditHistoryEntity::class, RecognitionProgressEntity::class],
+    version = 9,
     exportSchema = true,
 )
 abstract class AuraGalleryDatabase : RoomDatabase() {
@@ -16,6 +16,14 @@ abstract class AuraGalleryDatabase : RoomDatabase() {
     abstract fun editHistoryDao(): EditHistoryDao
 
     companion object {
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS recognition_progress (id INTEGER NOT NULL, currentItemIndex INTEGER NOT NULL, totalItems INTEGER NOT NULL, processedCount INTEGER NOT NULL, lastRunEpochMillis INTEGER NOT NULL, isPaused INTEGER NOT NULL, PRIMARY KEY(id))",
+                )
+            }
+        }
+
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE media_items ADD COLUMN sha256Hash TEXT DEFAULT NULL")
