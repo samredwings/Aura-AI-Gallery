@@ -385,13 +385,13 @@ class GalleryViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 contentUris.distinct().forEach { moveToTrash(it) }
+                // The scan results are snapshots; invalidate them after a Trash operation so
+                // the UI never displays stale groups or offers an already-trashed item again.
                 _duplicateReviewState.value = _duplicateReviewState.value.copy(
-                    exactGroups = _duplicateReviewState.value.exactGroups.filterNot { group ->
-                        group.items.all { item -> item.contentUri in contentUris }
-                    },
-                    similarGroups = _duplicateReviewState.value.similarGroups.filterNot { group ->
-                        group.members.all { member -> member.item.contentUri in contentUris }
-                    },
+                    exactGroups = emptyList(),
+                    similarGroups = emptyList(),
+                    hasScannedExact = false,
+                    hasScannedSimilar = false,
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
