@@ -99,6 +99,23 @@ class MediaEditorExporterTest {
         assertEquals("Pictures/ab", ExportLocation.sanitize("Pictures/a*b?"))
     }
 
+    @Test fun exportOptionsUseSavedQualityFolderAndEditMetadataPreferences() {
+        val params = EditParams(brightness = 0.1f, contrast = -0.2f, saturation = 0.3f, warmth = 0.4f)
+        val settings = ExportSettings(
+            quality = 87,
+            relativePath = ExportLocation.AURA_GALLERY,
+            includeEditHistory = true,
+        )
+
+        val options = ExportOptions.from(settings, presetName = "Custom edit", params = params)
+
+        assertEquals(87, options.quality)
+        assertEquals(ExportLocation.AURA_GALLERY, options.relativePath)
+        assertTrue(options.includeEditHistory)
+        assertEquals("Custom edit", options.presetName)
+        assertEquals(params, options.params)
+    }
+
     @Test fun qualityIsClampedToSupportedRange() {
         assertEquals(80, ExportSettings(quality = 10).normalized().quality)
         assertEquals(100, ExportSettings(quality = 500).normalized().quality)

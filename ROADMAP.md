@@ -102,8 +102,8 @@
 - [x] Persist named edit presets and active edit history; connect save, apply, branch, delete and reset actions to the editor.
 - [x] Implement the ColorMatrix pipeline in the specified order: saturation → contrast → warmth, with brightness as translation.
 - [x] Use the same ColorMatrix for live preview and the exported copy.
-- [ ] Wire saved export quality/location/edit-metadata preferences and the progress sheet to the editor's actual save operation.
-- [ ] Export edited images to the configured MediaStore folder (the current default is `Pictures/Aura Edits`) using `IS_PENDING` while writing.
+- [x] Wire saved export quality/location/edit-metadata preferences and the progress sheet to the editor's actual save operation; run bitmap I/O off the main thread.
+- [x] Export edited images to the configured MediaStore folder (the current default is `Pictures/Aura Edits`) using `IS_PENDING` while writing.
 - [ ] Preserve original pixels and prove revert/export behavior with image-level tests.
 
 **M3 exit criteria:**

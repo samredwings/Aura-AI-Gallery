@@ -11,6 +11,9 @@ import androidx.work.WorkManager
 import androidx.lifecycle.viewModelScope
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.data.local.EditHistoryEntity
+import ai.sakana.aura.gallery.data.export.ExportOptions
+import ai.sakana.aura.gallery.data.export.ExportSettingsStore
+import ai.sakana.aura.gallery.data.export.MediaEditorExporter
 import ai.sakana.aura.gallery.domain.editing.EditParams
 import ai.sakana.aura.gallery.domain.repository.EditHistoryRepository
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +55,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -62,6 +66,12 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import ai.sakana.aura.gallery.diagnostics.PerformanceMetrics
 import ai.sakana.aura.gallery.diagnostics.GalleryErrorReporter
+
+data class ExportProgressUiState(
+    val percent: Int = 0,
+    val isExporting: Boolean = true,
+    val errorMessage: String? = null,
+)
 
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
@@ -134,6 +144,8 @@ class GalleryViewModel @Inject constructor(
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _exportProgress = MutableStateFlow<ExportProgressUiState?>(null)
+    val exportProgress: StateFlow<ExportProgressUiState?> = _exportProgress.asStateFlow()
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     private val _recognitionProgress = MutableStateFlow(RecognitionProgress())
@@ -474,6 +486,50 @@ class GalleryViewModel @Inject constructor(
         launchEditHistoryOperation("record exported edit") {
             editHistoryRepository.recordExportedEdit(contentUri, params, System.currentTimeMillis())
         }
+
+    fun exportEditedCopy(item: MediaItem, matrixValues: FloatArray, params: EditParams) {
+        if (_exportProgress.value?.isExporting == true) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _exportProgress.value = ExportProgressUiState(percent = 0, isExporting = true)
+            try {
+                val settings = ExportSettingsStore(applicationContext).load()
+                val options = ExportOptions.from(settings, presetName = "Custom edit", params = params)
+                MediaEditorExporter.saveToneEdit(
+                    context = applicationContext,
+                    item = item,
+                    matrixValues = matrixValues,
+                    options = options,
+                    onProgress = { percent ->
+                        // Reserve 100% for the point after the output and edit-history row are both committed.
+                        _exportProgress.value = ExportProgressUiState(percent = percent.coerceIn(0, 99), isExporting = true)
+                    },
+                    onComplete = { uri -> Timber.i("Edited copy exported to %s", uri) },
+                )
+                try {
+                    editHistoryRepository.recordExportedEdit(item.contentUri, params, System.currentTimeMillis())
+                } catch (historyError: Exception) {
+                    Timber.w(historyError, "Edited copy was saved, but its history entry could not be recorded")
+                    _errorMessage.value = "Edited copy saved, but its edit-history entry couldn't be saved."
+                }
+                _exportProgress.value = ExportProgressUiState(percent = 100, isExporting = false)
+                refresh()
+            } catch (cancelled: CancellationException) {
+                _exportProgress.value = null
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.e(error, "Edited copy export failed")
+                _exportProgress.value = ExportProgressUiState(
+                    percent = _exportProgress.value?.percent ?: 0,
+                    isExporting = false,
+                    errorMessage = error.message ?: "The edited copy couldn't be saved.",
+                )
+            }
+        }
+    }
+
+    fun dismissExportProgress() {
+        if (_exportProgress.value?.isExporting != true) _exportProgress.value = null
+    }
 
     private fun launchEditHistoryOperation(label: String, operation: suspend () -> Unit) {
         viewModelScope.launch {

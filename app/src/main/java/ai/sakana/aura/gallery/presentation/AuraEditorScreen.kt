@@ -96,6 +96,7 @@ import timber.log.Timber
 internal fun AuraEditorScreen(
     item: MediaItem,
     editHistory: List<EditHistoryEntity>?,
+    isExporting: Boolean,
     onBack: () -> Unit,
     onSavePreset: (String, EditParams) -> Unit,
     onApplyPreset: (EditHistoryEntity) -> Unit,
@@ -183,7 +184,7 @@ internal fun AuraEditorScreen(
                     HoldCompareButton("Hold to compare", { compareOriginal = true }, { compareOriginal = false })
                 }
                 Box(Modifier.weight(1f)) {
-                    HairlineButton("Save copy", { onSaveCopy(matrix, params) }, modifier = Modifier.fillMaxWidth())
+                    HairlineButton("Save copy", { onSaveCopy(matrix, params) }, modifier = Modifier.fillMaxWidth(), enabled = !isExporting)
                 }
             }
             Spacer(Modifier.height(6.dp))
