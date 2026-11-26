@@ -26,7 +26,7 @@ import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import kotlin.math.roundToInt
 
-/** "EXPORT" block for the Settings screen. SettingsScreen is private in GalleryScreen.kt; Account 1 embeds this. */
+/** Export quality, MediaStore destination and optional EXIF edit-history preferences. */
 @Composable
 fun ExportSettingsSection(settings: ExportSettings, onChange: (ExportSettings) -> Unit, modifier: Modifier = Modifier) {
     val isCustom = settings.relativePath != ExportLocation.DEFAULT && settings.relativePath != ExportLocation.AURA_GALLERY

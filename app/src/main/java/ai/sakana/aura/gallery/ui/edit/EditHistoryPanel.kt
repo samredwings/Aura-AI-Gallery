@@ -37,8 +37,8 @@ import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.editing.EditHistoryRules
 
 /**
- * Edit stack shown below the tone sliders. Stateless: Account 1 mounts it inside AuraEditorScreen
- * (that composable is private in GalleryScreen.kt) and wires the callbacks to EditHistoryDao.
+ * Edit stack shown below the tone sliders. Stateless: AuraEditorScreen owns slider state while
+ * the ViewModel persists these operations through EditHistoryRepository.
  *
  * Tap = apply, long-press = "Save as new", trash = delete (confirm; the active preset is blocked).
  */

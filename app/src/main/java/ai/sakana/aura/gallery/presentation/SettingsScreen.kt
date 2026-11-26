@@ -70,6 +70,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import ai.sakana.aura.gallery.BuildConfig
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import ai.sakana.aura.gallery.ui.settings.ExportSettingsSection
+import ai.sakana.aura.gallery.data.export.ExportSettingsStore
 import ai.sakana.aura.gallery.diagnostics.DiagnosticReportExporter
 import ai.sakana.aura.gallery.design.AuraTokens
 import ai.sakana.aura.gallery.design.AuraToneColorMatrix
@@ -92,6 +97,8 @@ import timber.log.Timber
 @Composable
 internal fun SettingsScreen(context: Context, items: List<MediaItem>) {
     val bytes = remember(items) { items.sumOf { it.sizeBytes.coerceAtLeast(0L) } }
+    val exportSettingsStore = remember(context) { ExportSettingsStore(context) }
+    var exportSettings by remember(context) { mutableStateOf(exportSettingsStore.load()) }
     val database = remember { context.getDatabasePath("aura_gallery.db") }
     val databaseBytes = remember(database.lastModified()) {
         database.length() + java.io.File(database.path + "-wal").length()
@@ -120,6 +127,15 @@ internal fun SettingsScreen(context: Context, items: List<MediaItem>) {
             SettingsRow("Wi-Fi only", "Available after a cloud backup provider is implemented.", "NOT SET UP")
             SettingsRow("Auto backup", "No photos or videos are being uploaded to the cloud.", "OFF")
 
+            SettingsGroup("EXPORT")
+            ExportSettingsSection(
+                settings = exportSettings,
+                onChange = { updated ->
+                    exportSettings = updated.normalized()
+                    exportSettingsStore.save(exportSettings)
+                },
+            )
+
             SettingsGroup("ON-DEVICE ANALYSIS")
             SettingsRow("Face grouping", "On-device People suggestions and saved identities are available under Explore. Review suggestions before saving.", "AVAILABLE")
             SettingsRow("Duplicate scan", "Exact SHA-256 and similar-photo scans are available under Optimize. Review each group before moving copies to Trash.", "AVAILABLE")
@@ -138,7 +154,7 @@ internal fun SettingsScreen(context: Context, items: List<MediaItem>) {
             SettingsGroup("STORAGE")
             SettingsRow("Device library", items.size.toString() + " indexed photos/videos · " + Formatter.formatShortFileSize(context, bytes), "ON DEVICE")
             SettingsRow("Database", "Local media index", Formatter.formatShortFileSize(context, databaseBytes))
-            SettingsRow("Export folder", "New edited JPEG copies are saved here.", "Pictures/Aura Edits")
+            SettingsRow("Export folder", "New edited JPEG copies are saved here.", exportSettings.relativePath)
             Spacer(Modifier.height(24.dp))
         }
     }

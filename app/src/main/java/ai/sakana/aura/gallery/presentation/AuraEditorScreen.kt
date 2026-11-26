@@ -77,6 +77,9 @@ import ai.sakana.aura.gallery.design.InstrumentSerif
 import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.data.local.EditHistoryEntity
+import ai.sakana.aura.gallery.domain.editing.EditParams
+import ai.sakana.aura.gallery.ui.edit.EditHistoryPanel
 import ai.sakana.aura.gallery.domain.recognition.AiSet
 import ai.sakana.aura.gallery.domain.recognition.AiSetRules
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
@@ -90,14 +93,41 @@ import java.util.Locale
 import timber.log.Timber
 
 @Composable
-internal fun AuraEditorScreen(item: MediaItem, onBack: () -> Unit, onSaveCopy: (ColorMatrix) -> Unit) {
+internal fun AuraEditorScreen(
+    item: MediaItem,
+    editHistory: List<EditHistoryEntity>?,
+    isExporting: Boolean,
+    onBack: () -> Unit,
+    onSavePreset: (String, EditParams) -> Unit,
+    onApplyPreset: (EditHistoryEntity) -> Unit,
+    onBranchPreset: (EditHistoryEntity, String) -> Unit,
+    onDeletePreset: (EditHistoryEntity) -> Unit,
+    onResetHistory: () -> Unit,
+    onSaveCopy: (ColorMatrix, EditParams) -> Unit,
+) {
     var brightness by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var contrast by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var saturation by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var warmth by remember(item.contentUri) { mutableFloatStateOf(0f) }
+    var restoredHistory by remember(item.contentUri) { mutableStateOf(false) }
     var compareOriginal by remember { mutableStateOf(false) }
     var showAiEditInfo by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val params = remember(brightness, contrast, saturation, warmth) {
+        EditParams(brightness, contrast, saturation, warmth)
+    }
+    LaunchedEffect(item.contentUri, editHistory) {
+        val history = editHistory ?: return@LaunchedEffect
+        if (!restoredHistory) {
+            history.firstOrNull(EditHistoryEntity::isActive)?.let { active ->
+                brightness = active.brightness
+                contrast = active.contrast
+                saturation = active.saturation
+                warmth = active.warmth
+            }
+            restoredHistory = true
+        }
+    }
     val matrix = remember(brightness, contrast, saturation, warmth) {
         AuraToneColorMatrix.create(brightness, contrast, saturation, warmth)
     }
@@ -131,7 +161,8 @@ internal fun AuraEditorScreen(item: MediaItem, onBack: () -> Unit, onSaveCopy: (
             )
         }
         Column(
-            Modifier.fillMaxWidth().weight(0.42f).background(AuraTokens.Surface1).padding(horizontal = 20.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().weight(0.42f).background(AuraTokens.Surface1)
+                .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp),
         ) {
             Box(Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(3.dp).background(AuraTokens.HairlineStrong, CircleShape))
             Spacer(Modifier.height(10.dp))
@@ -153,11 +184,32 @@ internal fun AuraEditorScreen(item: MediaItem, onBack: () -> Unit, onSaveCopy: (
                     HoldCompareButton("Hold to compare", { compareOriginal = true }, { compareOriginal = false })
                 }
                 Box(Modifier.weight(1f)) {
-                    HairlineButton("Save copy", { onSaveCopy(matrix) }, modifier = Modifier.fillMaxWidth())
+                    HairlineButton("Save copy", { onSaveCopy(matrix, params) }, modifier = Modifier.fillMaxWidth(), enabled = !isExporting)
                 }
             }
             Spacer(Modifier.height(6.dp))
             HairlineButton("AI Edit", { showAiEditInfo = true }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            EditHistoryPanel(
+                presets = editHistory.orEmpty(),
+                onSaveCurrent = { name -> onSavePreset(name, params) },
+                onApply = { preset ->
+                    brightness = preset.brightness
+                    contrast = preset.contrast
+                    saturation = preset.saturation
+                    warmth = preset.warmth
+                    onApplyPreset(preset)
+                },
+                onBranch = onBranchPreset,
+                onDelete = onDeletePreset,
+                onReset = {
+                    brightness = 0f
+                    contrast = 0f
+                    saturation = 0f
+                    warmth = 0f
+                    onResetHistory()
+                },
+            )
         }
     }
     if (showAiEditInfo) {

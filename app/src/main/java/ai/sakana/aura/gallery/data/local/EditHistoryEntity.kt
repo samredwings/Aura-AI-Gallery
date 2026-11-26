@@ -8,8 +8,7 @@ import androidx.room.PrimaryKey
 
 /**
  * One saved, named set of tone parameters for a photo. The original file is never modified.
- * NOT yet registered in AuraGalleryDatabase: Account 1 adds it in the v7 -> v8 migration
- * (see docs/account3/SCHEMA_REQUESTS_ACCOUNT_3.md, request 3).
+ * Persisted by AuraGalleryDatabase v8+ and scoped to the original media URI.
  */
 @Entity(
     tableName = "edit_history",

@@ -90,19 +90,21 @@
 
 ## M3 — Real deduplication, editing and export
 
-**Status: Not started — follows the primary recognition milestone.**
+**Status: In progress — persistent exact/similar duplicate scanning and review are integrated; the tone editor now has Room-backed edit history and preset actions. Export-settings/progress wiring, scalable candidate generation and image-level acceptance remain.**
 
-- [ ] Implement SHA-256 over file bytes for exact-duplicate identity.
-- [ ] Implement 64-bit dHash over decoded image content.
-- [ ] Implement banded LSH candidate generation, Hamming-distance thresholding (initial threshold 5/64) and union-find clustering.
-- [ ] Keep exact duplicates separate from visually similar/near-duplicate groups.
-- [ ] Add indices and tests for exact match, resized image, recompressed image, brightness shift and unrelated images.
-- [ ] Add duplicate review UI; never delete or merge automatically without user action.
-- [ ] Persist non-destructive edit values in Room: brightness, contrast, saturation and warmth.
-- [ ] Implement the ColorMatrix pipeline in the specified order: saturation → contrast → warmth, with brightness as translation.
-- [ ] Add live preview using the same matrix logic as export.
-- [ ] Export edited images to MediaStore under `Pictures/AuraGallery`, using `IS_PENDING` while writing.
-- [ ] Preserve original pixels and prove revert/export behavior through tests.
+- [x] Implement SHA-256 over file bytes for exact-duplicate identity.
+- [x] Implement 64-bit dHash over decoded image content.
+- [ ] Implement banded LSH candidate generation, Hamming-distance thresholding (initial threshold 5/64) and scalable clustering; current grouping still uses pairwise candidate comparisons.
+- [x] Keep exact duplicates separate from visually similar/near-duplicate groups.
+- [x] Add hash indices and tests for exact matches, resized copies, recompression noise, brightness shifts and unrelated images.
+- [x] Add duplicate review UI; destructive actions remain explicit and reversible through Aura Trash.
+- [x] Persist non-destructive edit values in Room: brightness, contrast, saturation and warmth.
+- [x] Persist named edit presets and active edit history; connect save, apply, branch, delete and reset actions to the editor.
+- [x] Implement the ColorMatrix pipeline in the specified order: saturation → contrast → warmth, with brightness as translation.
+- [x] Use the same ColorMatrix for live preview and the exported copy.
+- [x] Wire saved export quality/location/edit-metadata preferences and the progress sheet to the editor's actual save operation; run bitmap I/O off the main thread.
+- [x] Export edited images to the configured MediaStore folder (the current default is `Pictures/Aura Edits`) using `IS_PENDING` while writing.
+- [ ] Preserve original pixels and prove revert/export behavior with image-level tests.
 
 **M3 exit criteria:**
 - Two renamed copies of the same bytes are flagged as exact duplicates.

@@ -76,10 +76,15 @@ import ai.sakana.aura.gallery.BuildConfig
 import ai.sakana.aura.gallery.diagnostics.DiagnosticReportExporter
 import ai.sakana.aura.gallery.design.AuraTokens
 import ai.sakana.aura.gallery.design.AuraToneColorMatrix
+import ai.sakana.aura.gallery.ui.edit.ExportProgressSheet
 import ai.sakana.aura.gallery.design.InstrumentSerif
 import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.data.local.EditHistoryEntity
+import ai.sakana.aura.gallery.domain.editing.EditParams
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import ai.sakana.aura.gallery.ui.dedup.DuplicateReviewScreen
 import ai.sakana.aura.gallery.domain.recognition.AiSet
 import ai.sakana.aura.gallery.domain.recognition.AiSetRules
@@ -116,6 +121,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val savedPeople by viewModel.savedPeople.collectAsState()
     val recognitionProgress by viewModel.recognitionProgress.collectAsState()
     val duplicateReviewState by viewModel.duplicateReviewState.collectAsState()
+    val exportProgress by viewModel.exportProgress.collectAsState()
     var destination by remember { mutableStateOf(Destination.PHOTOS) }
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -123,6 +129,10 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     var showRecentlyDeleted by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<MediaItem?>(null) }
     var editing by remember { mutableStateOf<MediaItem?>(null) }
+    val editorHistoryFlow: Flow<List<EditHistoryEntity>?> = remember(editing?.contentUri) {
+        editing?.let { viewModel.observeEditHistory(it.contentUri) } ?: flowOf(null)
+    }
+    val editorHistory by editorHistoryFlow.collectAsState(initial = null)
     var pendingTrashUris by remember { mutableStateOf<List<String>?>(null) }
     var moreOpen by remember { mutableStateOf(false) }
 
@@ -193,6 +203,14 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         }
     }
 
+    exportProgress?.let { progress ->
+        ExportProgressSheet(
+            percent = progress.percent,
+            errorMessage = progress.errorMessage,
+            onDismiss = viewModel::dismissExportProgress,
+        )
+    }
+
     if (pendingTrashUris != null) {
         AlertDialog(
             onDismissRequest = { pendingTrashUris = null },
@@ -214,19 +232,18 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         BackHandler { editing = null }
         ScreenErrorBoundary(screenName = "Editor", onRetry = { editing = null }) {
             AuraEditorScreen(
-            item = editing!!,
-            onBack = { editing = null },
-            onSaveCopy = { matrix ->
-                runCatching { ai.sakana.aura.gallery.data.export.MediaEditorExporter.saveToneEdit(context, editing!!, matrix.values) }
-                    .onSuccess {
-                        android.widget.Toast.makeText(context, "Edited copy saved to Pictures/Aura Edits", android.widget.Toast.LENGTH_LONG).show()
-                        viewModel.refresh()
-                    }
-                    .onFailure { error ->
-                        Timber.e(error, "Unable to export edited photo")
-                        android.widget.Toast.makeText(context, error.message ?: "Couldn't save edited copy", android.widget.Toast.LENGTH_LONG).show()
-                    }
-            },
+                item = editing!!,
+                editHistory = editorHistory,
+                isExporting = exportProgress?.isExporting == true,
+                onBack = { editing = null },
+                onSavePreset = { name, params -> viewModel.saveEditPreset(editing!!.contentUri, name, params) },
+                onApplyPreset = { preset -> viewModel.applyEditPreset(preset.id) },
+                onBranchPreset = { preset, name -> viewModel.branchEditPreset(preset.id, name) },
+                onDeletePreset = viewModel::deleteEditPreset,
+                onResetHistory = { viewModel.resetEditHistory(editing!!.contentUri) },
+                onSaveCopy = { matrix, params ->
+                    viewModel.exportEditedCopy(editing!!, matrix.values, params)
+                },
             )
         }
         return

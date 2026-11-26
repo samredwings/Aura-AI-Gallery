@@ -1,10 +1,12 @@
 package ai.sakana.aura.gallery.di
 
 import ai.sakana.aura.gallery.data.repository.RoomAiSetRepository
+import ai.sakana.aura.gallery.data.repository.RoomEditHistoryRepository
 import ai.sakana.aura.gallery.data.repository.RoomMediaRecognitionRepository
 import ai.sakana.aura.gallery.data.repository.RoomPersonClusterRepository
 import ai.sakana.aura.gallery.data.repository.RoomMediaRepository
 import ai.sakana.aura.gallery.domain.repository.AiSetRepository
+import ai.sakana.aura.gallery.domain.repository.EditHistoryRepository
 import ai.sakana.aura.gallery.domain.repository.MediaRecognitionRepository
 import ai.sakana.aura.gallery.domain.repository.PersonClusterRepository
 import ai.sakana.aura.gallery.domain.repository.MediaRepository
@@ -32,4 +34,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindPersonClusterRepository(implementation: RoomPersonClusterRepository): PersonClusterRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindEditHistoryRepository(implementation: RoomEditHistoryRepository): EditHistoryRepository
 }
