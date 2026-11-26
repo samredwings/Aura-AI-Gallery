@@ -38,10 +38,10 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace :app:check :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
       - name: Verify generated Android version
         run: ./gradlew --no-daemon :app:printResolvedVersion
-      - name: Verify and print exported Room schema v7
+      - name: Verify and print exported Room schema v8
         run: |
-          test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/7.json
-          cat app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/7.json
+          test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/8.json
+          cat app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/8.json
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
