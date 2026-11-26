@@ -65,13 +65,13 @@ object SimilarPhotoGrouper {
         // Images and videos are partitioned up front so cross-type pairs are never compared.
         val partitions = usable.indices.groupBy { isVideo(usable[it].item) }.values
         for (indices in partitions) {
-            for (i in indices.indices) {
-                for (j in i + 1 until indices.size) {
-                    val a = usable[indices[i]]
-                    val b = usable[indices[j]]
-                    if (HammingDistance.distance(a.hash, b.hash) <= threshold && canCompare(a.item, b.item)) {
-                        sets.union(indices[i], indices[j])
-                    }
+            val partitionHashes = indices.map { usable[it].hash }
+            val candidates = DHashLshCandidateGenerator.candidates(partitionHashes, threshold)
+            for ((left, right) in candidates) {
+                val a = usable[indices[left]]
+                val b = usable[indices[right]]
+                if (HammingDistance.distance(a.hash, b.hash) <= threshold && canCompare(a.item, b.item)) {
+                    sets.union(indices[left], indices[right])
                 }
             }
         }
