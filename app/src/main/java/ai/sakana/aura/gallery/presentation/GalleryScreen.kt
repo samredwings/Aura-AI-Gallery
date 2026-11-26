@@ -80,6 +80,10 @@ import ai.sakana.aura.gallery.design.InstrumentSerif
 import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.data.local.EditHistoryEntity
+import ai.sakana.aura.gallery.domain.editing.EditParams
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import ai.sakana.aura.gallery.ui.dedup.DuplicateReviewScreen
 import ai.sakana.aura.gallery.domain.recognition.AiSet
 import ai.sakana.aura.gallery.domain.recognition.AiSetRules
@@ -123,6 +127,10 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     var showRecentlyDeleted by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<MediaItem?>(null) }
     var editing by remember { mutableStateOf<MediaItem?>(null) }
+    val editorHistoryFlow: Flow<List<EditHistoryEntity>?> = remember(editing?.contentUri) {
+        editing?.let { viewModel.observeEditHistory(it.contentUri) } ?: flowOf(null)
+    }
+    val editorHistory by editorHistoryFlow.collectAsState(initial = null)
     var pendingTrashUris by remember { mutableStateOf<List<String>?>(null) }
     var moreOpen by remember { mutableStateOf(false) }
 
@@ -214,19 +222,27 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         BackHandler { editing = null }
         ScreenErrorBoundary(screenName = "Editor", onRetry = { editing = null }) {
             AuraEditorScreen(
-            item = editing!!,
-            onBack = { editing = null },
-            onSaveCopy = { matrix ->
-                runCatching { ai.sakana.aura.gallery.data.export.MediaEditorExporter.saveToneEdit(context, editing!!, matrix.values) }
-                    .onSuccess {
-                        android.widget.Toast.makeText(context, "Edited copy saved to Pictures/Aura Edits", android.widget.Toast.LENGTH_LONG).show()
-                        viewModel.refresh()
-                    }
-                    .onFailure { error ->
-                        Timber.e(error, "Unable to export edited photo")
-                        android.widget.Toast.makeText(context, error.message ?: "Couldn't save edited copy", android.widget.Toast.LENGTH_LONG).show()
-                    }
-            },
+                item = editing!!,
+                editHistory = editorHistory,
+                onBack = { editing = null },
+                onSavePreset = { name, params -> viewModel.saveEditPreset(editing!!.contentUri, name, params) },
+                onApplyPreset = { preset -> viewModel.applyEditPreset(preset.id) },
+                onBranchPreset = { preset, name -> viewModel.branchEditPreset(preset.id, name) },
+                onDeletePreset = viewModel::deleteEditPreset,
+                onResetHistory = { viewModel.resetEditHistory(editing!!.contentUri) },
+                onSaveCopy = { matrix, params ->
+                    val source = editing!!
+                    runCatching { ai.sakana.aura.gallery.data.export.MediaEditorExporter.saveToneEdit(context, source, matrix.values) }
+                        .onSuccess {
+                            viewModel.recordExportedEdit(source.contentUri, params)
+                            android.widget.Toast.makeText(context, "Edited copy saved to Pictures/Aura Edits", android.widget.Toast.LENGTH_LONG).show()
+                            viewModel.refresh()
+                        }
+                        .onFailure { error ->
+                            Timber.e(error, "Unable to export edited photo")
+                            android.widget.Toast.makeText(context, error.message ?: "Couldn't save edited copy", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                },
             )
         }
         return

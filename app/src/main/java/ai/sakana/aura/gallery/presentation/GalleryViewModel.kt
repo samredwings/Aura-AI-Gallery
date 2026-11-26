@@ -10,6 +10,12 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.lifecycle.viewModelScope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.data.local.EditHistoryEntity
+import ai.sakana.aura.gallery.domain.editing.EditParams
+import ai.sakana.aura.gallery.domain.repository.EditHistoryRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import ai.sakana.aura.gallery.domain.usecase.ImportPickedMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.RefreshMediaStoreUseCase
@@ -85,6 +91,7 @@ class GalleryViewModel @Inject constructor(
     private val removeMediaFromAiSet: RemoveMediaFromAiSetUseCase,
     private val deleteAiSet: DeleteAiSetUseCase,
     private val galleryErrorReporter: GalleryErrorReporter,
+    private val editHistoryRepository: EditHistoryRepository,
 ) : ViewModel() {
     val sceneClusters: StateFlow<List<SceneCluster>> = observeSceneClusters().stateIn(
         scope = viewModelScope,
@@ -431,6 +438,55 @@ class GalleryViewModel @Inject constructor(
 
     fun deletePerson(personId: Long) = launchPersonOperation("delete person") {
         deletePersonUseCase(personId)
+    }
+
+    fun observeEditHistory(contentUri: String): Flow<List<EditHistoryEntity>?> =
+        editHistoryRepository.observeForUri(contentUri)
+            .map<List<EditHistoryEntity>, List<EditHistoryEntity>?> { it }
+            .onStart { emit(null) }
+
+    fun saveEditPreset(contentUri: String, name: String, params: EditParams) =
+        launchEditHistoryOperation("save edit preset") {
+            editHistoryRepository.savePreset(contentUri, name, params, System.currentTimeMillis())
+        }
+
+    fun applyEditPreset(presetId: Long) = launchEditHistoryOperation("apply edit preset") {
+        editHistoryRepository.applyPreset(presetId, System.currentTimeMillis())
+    }
+
+    fun branchEditPreset(presetId: Long, name: String) =
+        launchEditHistoryOperation("branch edit preset") {
+            editHistoryRepository.branchPreset(presetId, name, System.currentTimeMillis())
+        }
+
+    fun deleteEditPreset(preset: EditHistoryEntity) =
+        launchEditHistoryOperation("delete edit preset") {
+            check(editHistoryRepository.deletePreset(preset)) {
+                "The active edit cannot be deleted. Apply another preset or reset first."
+            }
+        }
+
+    fun resetEditHistory(contentUri: String) = launchEditHistoryOperation("reset edit history") {
+        editHistoryRepository.reset(contentUri, System.currentTimeMillis())
+    }
+
+    fun recordExportedEdit(contentUri: String, params: EditParams) =
+        launchEditHistoryOperation("record exported edit") {
+            editHistoryRepository.recordExportedEdit(contentUri, params, System.currentTimeMillis())
+        }
+
+    private fun launchEditHistoryOperation(label: String, operation: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                operation()
+                Timber.i("Edit history operation completed: %s", label)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.w(error, "Edit history operation failed: %s", label)
+                _errorMessage.value = error.message ?: "The edit history couldn't be updated."
+            }
+        }
     }
 
     private fun launchPersonOperation(label: String, operation: suspend () -> Unit) {

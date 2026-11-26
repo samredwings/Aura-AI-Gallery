@@ -8,7 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
-/** Needs `abstract fun editHistoryDao(): EditHistoryDao` in AuraGalleryDatabase (Account 1). */
+/** Room persistence operations for the per-photo edit history stack. */
 @Dao
 abstract class EditHistoryDao {
     @Insert

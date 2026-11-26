@@ -10,3 +10,4 @@ captures/
 *.jks
 *.keystore
 app/src/main/assets/mobilenet_v3_small.tflite
+app/src/main/assets/sface_2021dec_int8.onnx
