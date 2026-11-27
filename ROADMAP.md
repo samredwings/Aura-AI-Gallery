@@ -49,9 +49,9 @@
 - [x] Create the clean Android implementation branch `android/rebuild-m1`; keep the legacy web source on its reference branch.
 - [x] Set root project name to `AuraGallery` and application ID/namespace to `ai.sakana.aura.gallery`.
 - [x] Add the complete Gradle 8.13 wrapper and pin AGP 8.13.0 / JDK 17 target / compileSdk 36 / targetSdk 36 / minSdk 26.
-- [ ] Pin Kotlin 2.0.21; local debug/release compilation passes on the available JDK 21 host. Validate the complete JDK 17 toolchain combination in CI.
+- [x] Pin Kotlin 2.3.20 with KSP 2.3.12; the complete JDK 17 toolchain combination passed the Android verification workflow.
 - [x] Add a stable dependency version catalog; use stable releases only. Coil is pinned to 3.0.4 for Kotlin 2.0.21 metadata compatibility.
-- [x] Add the single `:app` module, `@HiltAndroidApp` Application, and working Hilt/KSP wiring. Room 2.8.5 uses KAPT for schema generation due the recorded KSP serializer exception.
+- [x] Add the single `:app` module, `@HiltAndroidApp` Application, and working Hilt/KSP wiring. Room 2.8.5 schema processing uses KSP; `kotlin-metadata-jvm:2.4.21` is added to the KSP processor path for LiteRT-LM metadata compatibility.
 - [x] Add all referenced manifest resources: theme, backup rules, data-extraction rules, adaptive launcher icons and ProGuard rules.
 - [x] Configure Timber and baseline unit/instrumentation test dependencies.
 - [x] Add GitHub Actions workflow for wrapper validation, `:app:check`, `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lint` and Room v10 schema verification.
@@ -171,8 +171,8 @@
 
 ## Implementation notes and current blockers
 
-- Room 2.8.5 KSP release processing hits a Kotlin compiler classloader serializer AbstractMethodError with the pinned Kotlin 2.0.21 toolchain. Room processing now uses KAPT, while Hilt remains on KSP. KAPT reports a Kotlin language 1.9 fallback for stubs; keep this visible and revisit on the next toolchain upgrade. Room schema export through KAPT has been verified.
-- Coil 3.3.0 requires Kotlin 2.2 metadata and failed against Kotlin 2.0.21. Coil 3.0.4 is pinned to retain the v2.1 Kotlin baseline.
+- Room 2.8.5 schema processing currently uses KSP with Kotlin 2.3.20 / KSP 2.3.12. `kotlin-metadata-jvm:2.4.21` is added to the KSP processor path because LiteRT-LM 0.19.1 carries Kotlin 2.4 metadata. Revalidate this compatibility bridge on dependency upgrades; no KAPT fallback is configured.
+- Coil 3.0.4 remains pinned in the version catalog; revisit it during the next dependency compatibility review.
 - The local build sandbox runs JDK 21; GitHub Actions remains the JDK 17 CI gate. A Pixel 9 Android 15 / API 35 emulator is now available through ParallelSandbox. The Android host exposed only API 35, so API 33/34/36 runtime acceptance remains open.
 
 ## M1 — Performance Benchmarks
