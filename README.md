@@ -47,7 +47,8 @@ The LaMa model is approximately **208 MB** and is downloaded once. Erase inferen
 - JDK 17+
 - Android SDK platform 36
 - Gradle wrapper 8.13 (committed)
-- Android Gradle Plugin 8.13.0
+- Android Gradle Plugin 8.13.2
+- Kotlin 2.3.20 / KSP 2.3.12
 
 ## Build and test
 
