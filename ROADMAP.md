@@ -44,7 +44,7 @@
 
 ## M0 — Android build foundation
 
-**Status: In progress — GitHub Actions JDK 17 compile, lint, unit-test, wrapper and Room v10 schema gates passed on the reviewed main commit; debug APK artifact publishing is now added and awaits its first successful post-change run; device installation remains pending.**
+**Status: In progress — GitHub Actions JDK 17 compile, lint, unit-test, wrapper and Room v10 schema gates passed; debug APK artifact upload was verified in Android verification run #148; the newly added emulator migration tests await their first result and device installation remains pending.**
 
 - [x] Create the clean Android implementation branch `android/rebuild-m1`; keep the legacy web source on its reference branch.
 - [x] Set root project name to `AuraGallery` and application ID/namespace to `ai.sakana.aura.gallery`.
@@ -55,7 +55,7 @@
 - [x] Add all referenced manifest resources: theme, backup rules, data-extraction rules, adaptive launcher icons and ProGuard rules.
 - [x] Configure Timber and baseline unit/instrumentation test dependencies.
 - [x] Add GitHub Actions workflow for wrapper validation, `:app:check`, `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lint` and Room v10 schema verification.
-- [x] Add a required debug APK existence check and GitHub Actions artifact upload with 14-day retention; verify the first post-change run before marking the artifact release gate complete.
+- [x] Add a required debug APK existence check and GitHub Actions artifact upload with 14-day retention; verified artifact `aura-gallery-debug-apk-148` in workflow run #148.
 - [x] Build the Android checkout with the committed Gradle wrapper; GitHub Actions JDK 17 checks passed on the reviewed main commit.
 - [ ] Verify the new GitHub Actions run publishes an installable debug APK artifact and install it on a representative Android device.
 
@@ -70,6 +70,7 @@
 - [x] Add Room entities, DAO and database with one-shot reads, observation Flows and M1 URI/date/favourite indices. Hash/tag indices arrive with their later feature data.
 - [x] Export Room schema version 1 through KAPT and keep destructive migration fallback disabled; add explicit migrations with each schema change.
 - [x] Add instrumented MigrationTestHelper coverage for the checked-in v8→v10 and v9→v10 upgrade paths, including media-row preservation and v10 schema validation.
+- [ ] Execute the new API 35 emulator-backed v8→v10 and v9→v10 migration tests in CI.
 - [ ] Recover the authentic v7 schema snapshot and validate the historical v7→v8 migration; do not synthesize a snapshot.
 - [x] Use persisted epoch-millisecond `Long` timestamps.
 - [x] Add repository interface/implementation and `ObserveMediaUseCase`; feature/UI code depends on domain models/contracts.
