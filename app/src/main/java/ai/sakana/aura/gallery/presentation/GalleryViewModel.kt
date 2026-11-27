@@ -10,7 +10,13 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.lifecycle.viewModelScope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.domain.agent.ShotCandidate
+import ai.sakana.aura.gallery.domain.agent.ShotSequence
+import ai.sakana.aura.gallery.domain.agent.ShotSequenceGrouper
 import ai.sakana.aura.gallery.data.local.EditHistoryEntity
+import ai.sakana.aura.gallery.data.local.MediaItemDao
+import ai.sakana.aura.gallery.data.local.MediaVersionDao
+import ai.sakana.aura.gallery.data.local.MediaVersionEntity
 import ai.sakana.aura.gallery.data.export.ExportOptions
 import ai.sakana.aura.gallery.data.export.ExportSettingsStore
 import ai.sakana.aura.gallery.data.export.MediaEditorExporter
@@ -76,6 +82,8 @@ data class ExportProgressUiState(
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
     @ApplicationContext private val applicationContext: Context,
+    private val mediaItemDao: MediaItemDao,
+    private val mediaVersionDao: MediaVersionDao,
     observeMedia: ObserveMediaUseCase,
     private val refreshMediaStore: RefreshMediaStoreUseCase,
     private val importPickedMedia: ImportPickedMediaUseCase,
@@ -299,6 +307,49 @@ class GalleryViewModel @Inject constructor(
                 throw cancelled
             } catch (error: Exception) {
                 reportGalleryFailure("restore media from Aura trash", error, "This item couldn't be restored.")
+            }
+        }
+    }
+
+    suspend fun findContinuationShotSuggestions(): List<ShotSequence> = mediaItemDao.getAvailableNotTrashed()
+        .map { item ->
+            ShotCandidate(
+                id = item.id.toString(),
+                contentUri = item.contentUri,
+                capturedAtEpochMillis = item.dateTakenEpochMillis,
+                width = item.width,
+                height = item.height,
+                perceptualHash = item.perceptualHash,
+            )
+        }
+        .let(ShotSequenceGrouper::group)
+
+    fun observeMediaVersions(contentUri: String): Flow<List<MediaVersionEntity>> =
+        mediaVersionDao.observeVersions(contentUri)
+
+    fun recordMediaVersion(
+        sourceContentUri: String,
+        versionContentUri: String,
+        operation: String,
+        prompt: String,
+        modelId: String,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                require(sourceContentUri != versionContentUri) { "An edited version must be a separate file." }
+                mediaVersionDao.insertVersion(
+                    MediaVersionEntity(
+                        sourceContentUri = sourceContentUri,
+                        versionContentUri = versionContentUri,
+                        operation = operation,
+                        prompt = prompt.take(2_000),
+                        modelId = modelId,
+                        createdAtEpochMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }.onFailure { error ->
+                Timber.e(error, "Unable to save edited media version metadata")
+                reportGalleryFailure("save media version history", error as? Exception ?: Exception(error), "The edited copy was saved, but Aura couldn't add it to version history.")
             }
         }
     }
@@ -572,6 +623,12 @@ class GalleryViewModel @Inject constructor(
         recognitionWorkManager.getWorkInfosForUniqueWorkLiveData(RecognitionWorker.WORK_NAME)
             .removeObserver(recognitionWorkObserver)
         super.onCleared()
+    }
+
+    suspend fun saveAiSetForAgent(name: String, mediaUris: List<String>) {
+        require(name.isNotBlank()) { "Name the continuation set before saving it." }
+        require(mediaUris.distinct().size >= 2) { "At least two photos are needed for a continuation set." }
+        saveAiSet(name, mediaUris.distinct())
     }
 
     fun saveAiSet(name: String, mediaUris: List<String>) = launchAiSetOperation("save AI Set") {

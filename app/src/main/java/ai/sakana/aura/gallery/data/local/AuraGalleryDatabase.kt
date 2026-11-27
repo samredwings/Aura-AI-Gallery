@@ -6,16 +6,28 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, FaceEmbeddingEntity::class, AiSetEntity::class, AiSetMembershipEntity::class, PersonClusterEntity::class, EditHistoryEntity::class, RecognitionProgressEntity::class],
-    version = 9,
+    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, FaceEmbeddingEntity::class, AiSetEntity::class, AiSetMembershipEntity::class, PersonClusterEntity::class, EditHistoryEntity::class, RecognitionProgressEntity::class, MediaVersionEntity::class, AgentSkillEntity::class],
+    version = 10,
     exportSchema = true,
 )
 abstract class AuraGalleryDatabase : RoomDatabase() {
     abstract fun mediaItemDao(): MediaItemDao
     abstract fun mediaRecognitionDao(): MediaRecognitionDao
     abstract fun editHistoryDao(): EditHistoryDao
+    abstract fun mediaVersionDao(): MediaVersionDao
+    abstract fun agentSkillDao(): AgentSkillDao
 
     companion object {
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS media_versions (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, sourceContentUri TEXT NOT NULL, versionContentUri TEXT NOT NULL, operation TEXT NOT NULL, prompt TEXT NOT NULL, modelId TEXT NOT NULL, createdAtEpochMillis INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_media_versions_sourceContentUri_createdAtEpochMillis ON media_versions(sourceContentUri, createdAtEpochMillis)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_media_versions_versionContentUri ON media_versions(versionContentUri)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS agent_skills (id TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL, instructions TEXT NOT NULL, sourceUri TEXT, enabled INTEGER NOT NULL, createdAtEpochMillis INTEGER NOT NULL, PRIMARY KEY(id))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_agent_skills_enabled_name ON agent_skills(enabled, name)")
+            }
+        }
+
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

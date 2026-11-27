@@ -27,6 +27,7 @@ object DatabaseModule {
                 AuraGalleryDatabase.MIGRATION_6_7,
                 AuraGalleryDatabase.MIGRATION_7_8,
                 AuraGalleryDatabase.MIGRATION_8_9,
+                AuraGalleryDatabase.MIGRATION_9_10,
             )
             .build()
 
@@ -36,6 +37,14 @@ object DatabaseModule {
     @Provides
     fun provideEditHistoryDao(database: AuraGalleryDatabase): ai.sakana.aura.gallery.data.local.EditHistoryDao =
         database.editHistoryDao()
+
+    @Provides
+    fun provideMediaVersionDao(database: AuraGalleryDatabase): ai.sakana.aura.gallery.data.local.MediaVersionDao =
+        database.mediaVersionDao()
+
+    @Provides
+    fun provideAgentSkillDao(database: AuraGalleryDatabase): ai.sakana.aura.gallery.data.local.AgentSkillDao =
+        database.agentSkillDao()
 
     @Provides
     fun provideMediaRecognitionDao(database: AuraGalleryDatabase): ai.sakana.aura.gallery.data.local.MediaRecognitionDao =

@@ -6,6 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.asImageBitmap
@@ -18,6 +19,7 @@ import android.os.Build
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.core.app.ActivityCompat
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -81,6 +83,8 @@ import ai.sakana.aura.gallery.design.InstrumentSerif
 import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.domain.agent.AgentActionPolicy
+import ai.sakana.aura.gallery.domain.agent.ShotSequence
 import ai.sakana.aura.gallery.data.local.EditHistoryEntity
 import ai.sakana.aura.gallery.domain.editing.EditParams
 import kotlinx.coroutines.flow.Flow
@@ -105,6 +109,10 @@ private enum class Destination { PHOTOS, ALBUMS, EXPLORE, AGENT, PEOPLE, AI_SETS
 fun GalleryRoute(viewModel: GalleryViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val agentViewModel: LocalAgentViewModel = hiltViewModel()
+    val aiEraseViewModel: AiEraseViewModel = hiltViewModel()
+    val agentState by agentViewModel.state.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
     var access by remember { mutableStateOf(readMediaAccess(context)) }
     var mediaPermissionRequestCount by rememberSaveable { mutableIntStateOf(0) }
     var permissionPermanentlyDenied by rememberSaveable { mutableStateOf(false) }
@@ -129,6 +137,9 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     var showRecentlyDeleted by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<MediaItem?>(null) }
     var editing by remember { mutableStateOf<MediaItem?>(null) }
+    var aiErasing by remember { mutableStateOf<MediaItem?>(null) }
+    var aiErasePrompt by remember { mutableStateOf("Remove the highlighted object, text or watermark from this photo.") }
+    var continuationShotSuggestions by remember { mutableStateOf<List<ShotSequence>>(emptyList()) }
     val editorHistoryFlow: Flow<List<EditHistoryEntity>?> = remember(editing?.contentUri) {
         editing?.let { viewModel.observeEditHistory(it.contentUri) } ?: flowOf(null)
     }
@@ -184,6 +195,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             showRecentlyDeleted = false
             viewing = null
             editing = null
+            aiErasing = null
             pendingTrashUris = null
         }
     }
@@ -201,6 +213,173 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             mediaPermissionRequestCount += 1
             permissionRequest.launch(MediaPermissionPolicy.requiredPermissions(Build.VERSION.SDK_INT).toTypedArray())
         }
+    }
+
+    suspend fun executeAgentActions(actions: List<PendingAgentAction>) {
+        if (actions.isEmpty()) return
+        fun matchingMedia(query: String, mediaType: String, source: List<MediaItem>): List<MediaItem> {
+            val terms = query.trim().lowercase(Locale.ROOT)
+            val typed = source.filter { item ->
+                when (mediaType.lowercase(Locale.ROOT)) {
+                    "photo", "photos", "image", "images" -> !item.isVideo
+                    "video", "videos" -> item.isVideo
+                    else -> true
+                }
+            }
+            if (terms.isBlank() || terms == "all" || terms == "everything" || terms == "latest" || terms == "latest photo" || terms == "latest video") return typed
+            return typed.filter { item ->
+                item.displayName.orEmpty().contains(terms, ignoreCase = true) ||
+                    item.bucketName.contains(terms, ignoreCase = true) ||
+                    item.relativePath.contains(terms, ignoreCase = true) ||
+                    item.mimeType.orEmpty().contains(terms, ignoreCase = true)
+            }
+        }
+        val results = mutableListOf<Pair<String, String>>()
+        val originalPrompt = actions.first().originalUserPrompt
+        actions.forEach { action ->
+            val args = action.arguments
+            val result = runCatching {
+                when (action.tool) {
+                    "navigate" -> {
+                        when (args["screen"].orEmpty().lowercase(Locale.ROOT).replace(' ', '_')) {
+                            "photos", "library", "gallery", "favorites", "favourites", "videos" -> {
+                                destination = Destination.PHOTOS
+                                filter = when (args["screen"]?.lowercase(Locale.ROOT)) {
+                                    "favorites", "favourites" -> LibraryFilter.FAVORITES
+                                    "videos" -> LibraryFilter.VIDEOS
+                                    else -> LibraryFilter.ALL
+                                }
+                            }
+                            "albums" -> destination = Destination.ALBUMS
+                            "explore" -> destination = Destination.EXPLORE
+                            "people" -> destination = Destination.PEOPLE
+                            "ai_sets", "sets" -> destination = Destination.AI_SETS
+                            "optimize", "duplicates" -> destination = Destination.OPTIMIZE
+                            "settings" -> destination = Destination.SETTINGS
+                            "recently_deleted", "trash", "recycle_bin" -> showRecentlyDeleted = true
+                            "agent" -> destination = Destination.AGENT
+                            else -> error("Aura doesn't have a screen named ${args["screen"].orEmpty()}.")
+                        }
+                        "Opened ${args["screen"] ?: "the requested Aura screen"}."
+                    }
+                    "search_media" -> {
+                        val matches = matchingMedia(args["query"].orEmpty(), args["media_type"].orEmpty(), visibleItems)
+                            .sortedByDescending(MediaItem::dateTakenEpochMillis).take(16)
+                        val array = org.json.JSONArray()
+                        matches.forEach { item ->
+                            array.put(org.json.JSONObject()
+                                .put("uri", item.contentUri)
+                                .put("name", item.displayName ?: "Untitled")
+                                .put("type", if (item.isVideo) "video" else "photo")
+                                .put("folder", item.bucketName)
+                                .put("captured_at", item.dateTakenEpochMillis))
+                        }
+                        org.json.JSONObject().put("ok", true).put("count", matches.size).put("items", array).toString()
+                    }
+                    "open_latest_media" -> {
+                        val latest = visibleItems.filter { item ->
+                            when (args["media_type"].orEmpty().lowercase(Locale.ROOT)) {
+                                "video", "videos" -> item.isVideo
+                                else -> !item.isVideo
+                            }
+                        }.maxByOrNull(MediaItem::dateTakenEpochMillis)
+                        if (latest == null) error("No matching media is available on this device.")
+                        viewing = latest
+                        "Opened ${latest.displayName ?: if (latest.isVideo) "latest video" else "latest photo"}."
+                    }
+                    "open_ai_erase" -> {
+                        val query = args["query"].orEmpty()
+                        val found = matchingMedia(query, "photo", visibleItems)
+                            .maxByOrNull(MediaItem::dateTakenEpochMillis)
+                            ?: error("I couldn't find an accessible photo matching '${query.ifBlank { "latest photo" }}'.")
+                        aiErasePrompt = args["operation"] ?: originalPrompt
+                        aiErasing = found
+                        editing = null
+                        viewing = null
+                        "Opened ${found.displayName ?: "the selected photo"} in AI Erase. Paint over the object or detect text, then review and save a separate copy."
+                    }
+                    "open_tone_editor" -> {
+                        val query = args["query"].orEmpty()
+                        val found = matchingMedia(query, "photo", visibleItems)
+                            .maxByOrNull(MediaItem::dateTakenEpochMillis)
+                            ?: error("I couldn't find an accessible photo to edit.")
+                        editing = found
+                        viewing = null
+                        "Opened ${found.displayName ?: "the selected photo"} in Aura's non-destructive tone editor. Adjust the preview and save a new version."
+                    }
+                    "refresh_library" -> {
+                        if (access == MediaAccessLevel.DENIED) error("Grant Aura media access before refreshing the device library.")
+                        viewModel.refresh()
+                        "Started a local refresh of your device media index."
+                    }
+                    "analyze_library" -> {
+                        if (visibleItems.isEmpty()) error("No accessible media is indexed yet. Add media or grant access before analysis.")
+                        if (recognitionProgress.isRunning) "On-device analysis is already running."
+                        else { viewModel.analyzeLibrary(visibleItems); "Started on-device People and scene analysis for ${visibleItems.size} items." }
+                    }
+                    "scan_duplicates" -> {
+                        if (visibleItems.isEmpty()) error("No accessible media is indexed yet. Add media or grant access before scanning.")
+                        if (duplicateReviewState.isScanning) "A duplicate scan is already running."
+                        else {
+                            destination = Destination.OPTIMIZE
+                            if (args["mode"].equals("similar", ignoreCase = true)) viewModel.scanSimilarPhotos() else viewModel.scanExactDuplicates()
+                            "Opened Optimize and started a read-only ${args["mode"] ?: "exact"} duplicate scan."
+                        }
+                    }
+                    "find_continuation_shots" -> {
+                        continuationShotSuggestions = viewModel.findContinuationShotSuggestions()
+                        val groups = org.json.JSONArray()
+                        continuationShotSuggestions.forEachIndexed { index, sequence ->
+                            val members = visibleItems.filter { it.contentUri in sequence.contentUris }
+                            groups.put(org.json.JSONObject()
+                                .put("group_index", index)
+                                .put("count", sequence.contentUris.size)
+                                .put("start_time", sequence.startEpochMillis)
+                                .put("end_time", sequence.endEpochMillis)
+                                .put("media", org.json.JSONArray().also { array ->
+                                    members.forEach { array.put(org.json.JSONObject().put("name", it.displayName ?: "Untitled").put("uri", it.contentUri)) }
+                                }))
+                        }
+                        org.json.JSONObject().put("ok", true).put("suggestions", groups).toString()
+                    }
+                    "save_continuation_set" -> {
+                        val index = args["group_index"]?.toIntOrNull() ?: error("Choose a continuation group index from the suggestions first.")
+                        val group = continuationShotSuggestions.getOrNull(index) ?: error("That continuation group is no longer available. Run the search again.")
+                        val name = args["name"].orEmpty().ifBlank { "Continuation ${index + 1}" }
+                        viewModel.saveAiSetForAgent(name, group.contentUris)
+                        "Saved '$name' as a user-confirmed AI Set with ${group.contentUris.size} shots."
+                    }
+                    "move_media_to_trash" -> {
+                        if (!AgentActionPolicy.authorizeTrash(originalPrompt)) error("I won't move media to Trash because your original request didn't explicitly ask to delete, trash, or move it to Recently Deleted.")
+                        val query = args["query"].orEmpty()
+                        val matches = if (query.equals("selected", true)) visibleItems.filter { it.contentUri in selected }
+                            else matchingMedia(query, "all", visibleItems)
+                        if (matches.isEmpty()) error("No matching photos or videos were found. Nothing was moved.")
+                        pendingTrashUris = matches.map(MediaItem::contentUri).distinct()
+                        "Found ${matches.size} matching item(s). Review the Recently Deleted confirmation in Aura to move them into the recoverable bin. Permanent deletion is not available."
+                    }
+                    "restore_from_trash" -> {
+                        val matches = matchingMedia(args["query"].orEmpty(), "all", visibleTrashedItems)
+                        if (matches.isEmpty()) error("No matching items were found in Recently Deleted.")
+                        matches.forEach { viewModel.restoreFromTrash(it.contentUri) }
+                        "Requested restore for ${matches.size} item(s) from Recently Deleted."
+                    }
+                    "open_settings" -> { destination = Destination.SETTINGS; "Opened Aura Settings." }
+                    "search_web" -> {
+                        val query = args["query"].orEmpty().trim()
+                        if (query.isBlank()) error("Provide a topic to search on the web.")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=${android.net.Uri.encode(query)}")))
+                        "Opened a browser search for '$query'. No gallery image or private media was shared."
+                    }
+                    else -> error("Aura rejected an unsupported action: ${action.tool}.")
+                }
+            }.fold(
+                onSuccess = { value -> org.json.JSONObject().put("ok", true).put("result", value).toString() },
+                onFailure = { error -> org.json.JSONObject().put("ok", false).put("error", error.message ?: "The action failed.").toString() },
+            )
+            results += action.tool to result
+        }
+        agentViewModel.provideToolResults(results, originalPrompt)
     }
 
     exportProgress?.let { progress ->
@@ -226,6 +405,20 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             },
             dismissButton = { TextButton(onClick = { pendingTrashUris = null }) { Text("Cancel") } },
         )
+    }
+
+    if (aiErasing != null) {
+        BackHandler { aiErasing = null }
+        ScreenErrorBoundary(screenName = "AI Erase", onRetry = { aiErasing = null }) {
+            AiEraseScreen(
+                item = aiErasing!!,
+                modelReady = agentState.inpaintDownload.status == "Downloaded" || agentState.inpaintDownload.status == "Ready",
+                viewModel = aiEraseViewModel,
+                onBack = { aiErasing = null },
+                onDownloadModel = agentViewModel::downloadInpaintingModel,
+            )
+        }
+        return
     }
 
     if (editing != null) {
@@ -363,70 +556,16 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                 }
                 Destination.AGENT -> ScreenErrorBoundary(screenName = "Aura Agent", onRetry = { destination = Destination.EXPLORE }) {
                     LocalAgentScreen(
+                        state = agentState,
                         itemCount = visibleItems.size,
                         hasMediaAccess = access != MediaAccessLevel.DENIED,
                         recognitionRunning = recognitionProgress.isRunning,
                         duplicateScanRunning = duplicateReviewState.isScanning,
-                        onCommand = { command ->
-                            when (command) {
-                                is LocalAgentCommand.OpenLibrary -> {
-                                    destination = Destination.PHOTOS
-                                    filter = command.filter
-                                    selected = emptySet()
-                                    when (command.filter) {
-                                        LibraryFilter.ALL -> "Opened your Library with all available media."
-                                        LibraryFilter.PHOTOS -> "Opened your Library filtered to photos."
-                                        LibraryFilter.VIDEOS -> "Opened your Library filtered to videos."
-                                        LibraryFilter.FAVORITES -> "Opened your saved favorites."
-                                    }
-                                }
-                                LocalAgentCommand.OpenAlbums -> { destination = Destination.ALBUMS; "Opened Albums." }
-                                LocalAgentCommand.OpenExplore -> { destination = Destination.EXPLORE; "Opened Explore." }
-                                LocalAgentCommand.OpenPeople -> { destination = Destination.PEOPLE; "Opened People. Face matches remain review suggestions until you confirm them." }
-                                LocalAgentCommand.OpenAiSets -> { destination = Destination.AI_SETS; "Opened AI Sets. Scene matches are suggestions; save only groups you confirm." }
-                                LocalAgentCommand.OpenOptimize -> { destination = Destination.OPTIMIZE; "Opened Optimize. Duplicate scans are read-only; review results before taking any action." }
-                                LocalAgentCommand.OpenSettings -> { destination = Destination.SETTINGS; "Opened Settings." }
-                                LocalAgentCommand.OpenRecentlyDeleted -> { showRecentlyDeleted = true; "Opened Recently Deleted. Restore items from there when needed." }
-                                LocalAgentCommand.OpenLatestPhoto -> {
-                                    val latest = visibleItems.filterNot(MediaItem::isVideo).maxByOrNull(MediaItem::dateTakenEpochMillis)
-                                    if (latest == null) "I couldn't find an accessible photo on this device."
-                                    else { viewing = latest; "Opening the latest photo${latest.displayName?.let { ": $it" }.orEmpty()}." }
-                                }
-                                LocalAgentCommand.OpenLatestVideo -> {
-                                    val latest = visibleItems.filter(MediaItem::isVideo).maxByOrNull(MediaItem::dateTakenEpochMillis)
-                                    if (latest == null) "I couldn't find an accessible video on this device."
-                                    else { viewing = latest; "Opening the latest video${latest.displayName?.let { ": $it" }.orEmpty()}." }
-                                }
-                                LocalAgentCommand.RefreshLibrary -> {
-                                    if (access == MediaAccessLevel.DENIED) "Grant Aura media access before refreshing the device library."
-                                    else { viewModel.refresh(); "Started a local refresh of your device media index." }
-                                }
-                                LocalAgentCommand.AnalyzeLibrary -> {
-                                    when {
-                                        visibleItems.isEmpty() -> "No accessible media is indexed yet. Add media or grant access, then try again."
-                                        recognitionProgress.isRunning -> "On-device analysis is already running."
-                                        else -> { viewModel.analyzeLibrary(visibleItems); "Started on-device People and scene analysis for ${visibleItems.size} media items." }
-                                    }
-                                }
-                                LocalAgentCommand.ScanExactDuplicates -> {
-                                    when {
-                                        visibleItems.isEmpty() -> "No accessible media is indexed yet. Add media or grant access before scanning."
-                                        duplicateReviewState.isScanning -> "A duplicate scan is already running."
-                                        else -> { destination = Destination.OPTIMIZE; viewModel.scanExactDuplicates(); "Opened Optimize and started a read-only exact-duplicate scan." }
-                                    }
-                                }
-                                LocalAgentCommand.ScanSimilarPhotos -> {
-                                    when {
-                                        visibleItems.isEmpty() -> "No accessible media is indexed yet. Add media or grant access before scanning."
-                                        duplicateReviewState.isScanning -> "A duplicate scan is already running."
-                                        else -> { destination = Destination.OPTIMIZE; viewModel.scanSimilarPhotos(); "Opened Optimize and started a read-only similar-photo scan." }
-                                    }
-                                }
-                                LocalAgentCommand.Help -> "Try: open favorites, show videos, open albums, open people, open AI Sets, open latest photo, refresh gallery, analyze my library, find exact duplicates, scan similar photos, recently deleted, or open settings."
-                                LocalAgentCommand.DestructiveActionBlocked -> "I won't delete, erase, or move media from a free-text command. Open Optimize or Recently Deleted and use the app's explicit review and confirmation controls."
-                                LocalAgentCommand.Unsupported -> "I couldn't match that command. Type 'help' to see what I can operate locally."
-                            }
-                        },
+                        onSendMessage = agentViewModel::sendMessage,
+                        onDownloadTextModel = agentViewModel::downloadTextModel,
+                        onDownloadInpaintingModel = agentViewModel::downloadInpaintingModel,
+                        onImportSkill = agentViewModel::importSkill,
+                        onRunActions = { actions -> coroutineScope.launch { executeAgentActions(actions) } },
                     )
                 }
                 Destination.PEOPLE -> ScreenErrorBoundary(screenName = "People", errorMessage = recognitionProgress.error ?: error, onRetry = viewModel::refresh) {

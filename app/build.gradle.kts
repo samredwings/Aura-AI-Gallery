@@ -7,7 +7,6 @@ import java.nio.file.StandardCopyOption
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    id("org.jetbrains.kotlin.kapt")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -153,10 +152,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     signingConfigs {
         if (releaseSigningConfigured) {
             create("release") {
@@ -186,18 +181,14 @@ android {
     }
 }
 
-kapt {
-    correctErrorTypes = true
-    arguments {
-        arg("room.schemaLocation", "$projectDir/schemas")
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
-// Room KAPT exports one shared schema file for all Android variants. Keep the
-// release processor after debug so parallel Gradle execution cannot read the
-// schema while the other variant is replacing it.
-tasks.matching { it.name == "kaptReleaseKotlin" }.configureEach {
-    mustRunAfter("kaptDebugKotlin")
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -217,19 +208,25 @@ dependencies {
     implementation(libs.mediapipe.tasks.vision)
     implementation(libs.mlkit.face.detection)
     implementation(libs.onnxruntime.android)
+    implementation(libs.litertlm.android)
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.gson)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    ksp(libs.room.compiler)
+    ksp(libs.androidx.hilt.compiler)
+    ksp("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.21")
+    // LiteRT-LM 0.19.x carries Kotlin metadata 2.4; keep Hilt 2.52 on AGP 8.13
+    // by supplying a reader that understands that metadata on the KSP processor path.
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    kapt(libs.room.compiler)
 
     implementation(libs.timber)
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
-    kapt(libs.androidx.hilt.compiler)
     implementation(libs.androidx.security.crypto)
     implementation(libs.play.services.auth)
 
