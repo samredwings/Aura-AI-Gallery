@@ -44,7 +44,7 @@
 
 ## M0 — Android build foundation
 
-**Status: In progress — local debug/release build gates pass; fresh GitHub Actions JDK 17 run and device installation are still pending.**
+**Status: In progress — GitHub Actions JDK 17 compile, lint, unit-test, wrapper and Room v10 schema gates passed on the reviewed main commit; debug APK artifact publishing is now added and awaits its first successful post-change run; device installation remains pending.**
 
 - [x] Create the clean Android implementation branch `android/rebuild-m1`; keep the legacy web source on its reference branch.
 - [x] Set root project name to `AuraGallery` and application ID/namespace to `ai.sakana.aura.gallery`.
@@ -54,8 +54,10 @@
 - [x] Add the single `:app` module, `@HiltAndroidApp` Application, and working Hilt/KSP wiring. Room 2.8.5 uses KAPT for schema generation due the recorded KSP serializer exception.
 - [x] Add all referenced manifest resources: theme, backup rules, data-extraction rules, adaptive launcher icons and ProGuard rules.
 - [x] Configure Timber and baseline unit/instrumentation test dependencies.
-- [x] Add GitHub Actions workflow for wrapper validation, `:app:check`, `:app:testDebugUnitTest`, `:app:assembleDebug` and APK artifact upload.
-- [x] Build the clean Android checkout with the committed Gradle wrapper; verify the GitHub Actions run on JDK 17 after push.
+- [x] Add GitHub Actions workflow for wrapper validation, `:app:check`, `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lint` and Room v10 schema verification.
+- [x] Add a required debug APK existence check and GitHub Actions artifact upload with 14-day retention; verify the first post-change run before marking the artifact release gate complete.
+- [x] Build the Android checkout with the committed Gradle wrapper; GitHub Actions JDK 17 checks passed on the reviewed main commit.
+- [ ] Verify the new GitHub Actions run publishes an installable debug APK artifact and install it on a representative Android device.
 
 **M0 exit criteria:** GitHub Actions completes successfully from a fresh checkout and publishes an installable debug APK artifact. No missing resource, manifest, wrapper or dependency-injection errors.
 
