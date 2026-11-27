@@ -15,6 +15,12 @@ Aura AI Gallery is being rebuilt as a phone-first Android gallery. The Android a
 
 The previous AI Studio/web implementation is preserved on legacy-reference/ai-studio-web as a read-only reference. It is not part of this Android app.
 
+## Local agent
+
+Open **Explore → Aura Agent** (or choose it from the More menu) to operate Aura with local commands. The command parser runs inside the app; it does not send prompts or media to a remote service. Supported actions include opening Library filters, Albums, People, AI Sets, Optimize and Settings; opening the latest photo or video; refreshing the device index; starting on-device recognition; and starting read-only exact/similar duplicate scans. Type `help` in the agent for example commands.
+
+The agent does not execute arbitrary shell or network instructions. Delete, erase and move-to-trash commands are blocked; media changes still require Aura’s existing review and confirmation controls.
+
 ## Build requirements
 
 - JDK 17+

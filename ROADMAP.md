@@ -143,6 +143,7 @@
 - [ ] Extract stable code into modules only when an actual seam and measurable benefit exist.
 - [ ] Expand unit, integration, UI and screenshot tests.
 - [ ] Enable and validate R8/minification and release configuration.
+- [x] Add the deterministic on-device Aura Agent for safe navigation, library refresh, local recognition and read-only duplicate scans; block destructive free-text commands.
 - [ ] Add localization/internationalization and accessibility review.
 - [ ] Run final dependency, security, performance, memory and install/update checks.
 

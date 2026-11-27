@@ -98,7 +98,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import timber.log.Timber
 
-private enum class Destination { PHOTOS, ALBUMS, EXPLORE, PEOPLE, AI_SETS, OPTIMIZE, SETTINGS }
+private enum class Destination { PHOTOS, ALBUMS, EXPLORE, AGENT, PEOPLE, AI_SETS, OPTIMIZE, SETTINGS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -340,10 +340,79 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                 }
                 Destination.EXPLORE -> ScreenErrorBoundary(screenName = "Explore", errorMessage = error, onRetry = viewModel::refresh) {
                     ExploreScreen(
+                    onAgent = { destination = Destination.AGENT },
                     onPeople = { destination = Destination.PEOPLE },
                     onAiSets = { destination = Destination.AI_SETS },
                     onOptimize = { destination = Destination.OPTIMIZE },
                     onSettings = { destination = Destination.SETTINGS },
+                    )
+                }
+                Destination.AGENT -> ScreenErrorBoundary(screenName = "Aura Agent", onRetry = { destination = Destination.EXPLORE }) {
+                    LocalAgentScreen(
+                        itemCount = visibleItems.size,
+                        hasMediaAccess = access != MediaAccessLevel.DENIED,
+                        recognitionRunning = recognitionProgress.isRunning,
+                        duplicateScanRunning = duplicateReviewState.isScanning,
+                        onCommand = { command ->
+                            when (command) {
+                                is LocalAgentCommand.OpenLibrary -> {
+                                    destination = Destination.PHOTOS
+                                    filter = command.filter
+                                    selected = emptySet()
+                                    when (command.filter) {
+                                        LibraryFilter.ALL -> "Opened your Library with all available media."
+                                        LibraryFilter.PHOTOS -> "Opened your Library filtered to photos."
+                                        LibraryFilter.VIDEOS -> "Opened your Library filtered to videos."
+                                        LibraryFilter.FAVORITES -> "Opened your saved favorites."
+                                    }
+                                }
+                                LocalAgentCommand.OpenAlbums -> { destination = Destination.ALBUMS; "Opened Albums." }
+                                LocalAgentCommand.OpenExplore -> { destination = Destination.EXPLORE; "Opened Explore." }
+                                LocalAgentCommand.OpenPeople -> { destination = Destination.PEOPLE; "Opened People. Face matches remain review suggestions until you confirm them." }
+                                LocalAgentCommand.OpenAiSets -> { destination = Destination.AI_SETS; "Opened AI Sets. Scene matches are suggestions; save only groups you confirm." }
+                                LocalAgentCommand.OpenOptimize -> { destination = Destination.OPTIMIZE; "Opened Optimize. Duplicate scans are read-only; review results before taking any action." }
+                                LocalAgentCommand.OpenSettings -> { destination = Destination.SETTINGS; "Opened Settings." }
+                                LocalAgentCommand.OpenRecentlyDeleted -> { showRecentlyDeleted = true; "Opened Recently Deleted. Restore items from there when needed." }
+                                LocalAgentCommand.OpenLatestPhoto -> {
+                                    val latest = visibleItems.filterNot(MediaItem::isVideo).maxByOrNull(MediaItem::dateTakenEpochMillis)
+                                    if (latest == null) "I couldn't find an accessible photo on this device."
+                                    else { viewing = latest; "Opening the latest photo${latest.displayName?.let { ": $it" }.orEmpty()}." }
+                                }
+                                LocalAgentCommand.OpenLatestVideo -> {
+                                    val latest = visibleItems.filter(MediaItem::isVideo).maxByOrNull(MediaItem::dateTakenEpochMillis)
+                                    if (latest == null) "I couldn't find an accessible video on this device."
+                                    else { viewing = latest; "Opening the latest video${latest.displayName?.let { ": $it" }.orEmpty()}." }
+                                }
+                                LocalAgentCommand.RefreshLibrary -> {
+                                    if (access == MediaAccessLevel.DENIED) "Grant Aura media access before refreshing the device library."
+                                    else { viewModel.refresh(); "Started a local refresh of your device media index." }
+                                }
+                                LocalAgentCommand.AnalyzeLibrary -> {
+                                    when {
+                                        visibleItems.isEmpty() -> "No accessible media is indexed yet. Add media or grant access, then try again."
+                                        recognitionProgress.isRunning -> "On-device analysis is already running."
+                                        else -> { viewModel.analyzeLibrary(visibleItems); "Started on-device People and scene analysis for ${visibleItems.size} media items." }
+                                    }
+                                }
+                                LocalAgentCommand.ScanExactDuplicates -> {
+                                    when {
+                                        visibleItems.isEmpty() -> "No accessible media is indexed yet. Add media or grant access before scanning."
+                                        duplicateReviewState.isScanning -> "A duplicate scan is already running."
+                                        else -> { destination = Destination.OPTIMIZE; viewModel.scanExactDuplicates(); "Opened Optimize and started a read-only exact-duplicate scan." }
+                                    }
+                                }
+                                LocalAgentCommand.ScanSimilarPhotos -> {
+                                    when {
+                                        visibleItems.isEmpty() -> "No accessible media is indexed yet. Add media or grant access before scanning."
+                                        duplicateReviewState.isScanning -> "A duplicate scan is already running."
+                                        else -> { destination = Destination.OPTIMIZE; viewModel.scanSimilarPhotos(); "Opened Optimize and started a read-only similar-photo scan." }
+                                    }
+                                }
+                                LocalAgentCommand.Help -> "Try: open favorites, show videos, open albums, open people, open AI Sets, open latest photo, refresh gallery, analyze my library, find exact duplicates, scan similar photos, recently deleted, or open settings."
+                                LocalAgentCommand.DestructiveActionBlocked -> "I won't delete, erase, or move media from a free-text command. Open Optimize or Recently Deleted and use the app's explicit review and confirmation controls."
+                                LocalAgentCommand.Unsupported -> "I couldn't match that command. Type 'help' to see what I can operate locally."
+                            }
+                        },
                     )
                 }
                 Destination.PEOPLE -> ScreenErrorBoundary(screenName = "People", errorMessage = recognitionProgress.error ?: error, onRetry = viewModel::refresh) {
@@ -401,6 +470,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         ) {
             Text("Aura", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), fontFamily = InstrumentSerif, fontSize = 25.sp)
             SheetNavigationRow("Explore", "People and AI Sets", Icons.Outlined.Explore) { destination = Destination.EXPLORE; moreOpen = false }
+            SheetNavigationRow("Aura Agent", "Operate Aura with local commands", Icons.Outlined.AutoAwesome) { destination = Destination.AGENT; moreOpen = false }
             SheetNavigationRow("Optimize", "Storage and duplicate analysis", Icons.Outlined.Tune) { destination = Destination.OPTIMIZE; moreOpen = false }
             SheetNavigationRow("Settings", "Backup, privacy and app settings", Icons.Outlined.Settings) { destination = Destination.SETTINGS; moreOpen = false }
             Spacer(Modifier.height(18.dp))
@@ -409,9 +479,10 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
 }
 
 @Composable
-private fun ExploreScreen(onPeople: () -> Unit, onAiSets: () -> Unit, onOptimize: () -> Unit, onSettings: () -> Unit) {
+private fun ExploreScreen(onAgent: () -> Unit, onPeople: () -> Unit, onAiSets: () -> Unit, onOptimize: () -> Unit, onSettings: () -> Unit) {
     Column(Modifier.fillMaxSize().background(AuraTokens.Void).verticalScroll(rememberScrollState())) {
         PageHeader("Explore", "PEOPLE · AI SETS · TOOLS")
+        ExploreAction("Aura Agent", "Operate Aura with private, on-device commands", Icons.Outlined.AutoAwesome, onAgent)
         ExploreAction("People", "Group faces and manage identities on-device", Icons.Outlined.PeopleOutline, onPeople)
         ExploreAction("AI Sets", "Find recurring scenes, outfits and visual setups", Icons.Outlined.AutoAwesome, onAiSets)
         ExploreAction("Optimize", "Review storage usage and duplicate scans", Icons.Outlined.Tune, onOptimize)
@@ -894,7 +965,7 @@ private fun AuraBottomBar(selected: Destination, onSelect: (Destination) -> Unit
         ) {
             NavItem("Photos", selected == Destination.PHOTOS, Icons.Outlined.GridView) { onSelect(Destination.PHOTOS) }
             NavItem("Albums", selected == Destination.ALBUMS, Icons.Outlined.Folder) { onSelect(Destination.ALBUMS) }
-            NavItem("Explore", selected == Destination.EXPLORE || selected == Destination.PEOPLE || selected == Destination.AI_SETS || selected == Destination.OPTIMIZE || selected == Destination.SETTINGS, Icons.Outlined.Explore) { onSelect(Destination.EXPLORE) }
+            NavItem("Explore", selected == Destination.EXPLORE || selected == Destination.AGENT || selected == Destination.PEOPLE || selected == Destination.AI_SETS || selected == Destination.OPTIMIZE || selected == Destination.SETTINGS, Icons.Outlined.Explore) { onSelect(Destination.EXPLORE) }
         }
     }
 }
