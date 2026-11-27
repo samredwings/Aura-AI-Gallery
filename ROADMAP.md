@@ -90,11 +90,11 @@
 
 ## M3 — Real deduplication, editing and export
 
-**Status: In progress — persistent exact/similar duplicate scanning and review are integrated; the tone editor now has Room-backed edit history and preset actions. Export-settings/progress wiring, scalable candidate generation and image-level acceptance remain.**
+**Status: In progress — exact/similar duplicate scanning and review are integrated; the editor now has Room-backed edit history, saved export preferences and background export progress. Disjoint-band dHash candidate generation is integrated; image-level acceptance remains.**
 
 - [x] Implement SHA-256 over file bytes for exact-duplicate identity.
 - [x] Implement 64-bit dHash over decoded image content.
-- [ ] Implement banded LSH candidate generation, Hamming-distance thresholding (initial threshold 5/64) and scalable clustering; current grouping still uses pairwise candidate comparisons.
+- [x] Implement disjoint-band LSH candidate generation with `threshold + 1` bands, exact Hamming-distance thresholding and transitive union-find clustering. Every pair within the threshold shares at least one complete band.
 - [x] Keep exact duplicates separate from visually similar/near-duplicate groups.
 - [x] Add hash indices and tests for exact matches, resized copies, recompression noise, brightness shifts and unrelated images.
 - [x] Add duplicate review UI; destructive actions remain explicit and reversible through Aura Trash.

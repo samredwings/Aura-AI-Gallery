@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.random.Random
 
 class SimilarPhotoGrouperTest {
     private fun item(id: Long, w: Int = 4000, h: Int = 3000, video: Boolean = false) = MediaItemEntity(
@@ -55,6 +56,48 @@ class SimilarPhotoGrouperTest {
         assertEquals(0, group.members.first().distanceToKeep)
         assertEquals(1, group.members.last().distanceToKeep)
         assertTrue(group.isNearExact)
+    }
+
+    @Test fun bandedCandidatesNeverDropPairsAtTheHammingThreshold() {
+        // Ten bit flips are placed in ten different bands; the eleventh band remains identical.
+        val differingBits = intArrayOf(0, 6, 12, 18, 24, 30, 36, 42, 48, 54)
+        val nearby = differingBits.fold(base) { hash, bit -> hash xor (1L shl bit) }
+        assertEquals(10, HammingDistance.distance(base, nearby))
+
+        val candidates = DHashLshCandidateGenerator.candidates(
+            listOf(base, nearby),
+            threshold = HammingDistance.SIMILAR_MAX,
+        )
+
+        assertEquals(setOf(0 to 1), candidates)
+    }
+
+    @Test fun bandedCandidatesDeduplicatePairsThatShareSeveralBands() {
+        val candidates = DHashLshCandidateGenerator.candidates(
+            listOf(base, flip(base, 3)),
+            threshold = HammingDistance.SIMILAR_MAX,
+        )
+
+        assertEquals(setOf(0 to 1), candidates)
+    }
+
+    @Test fun bandedCandidatesReduceComparisonsForUnrelatedHashes() {
+        val random = Random(1234)
+        val hashes = List(400) { random.nextLong() }
+        val candidates = DHashLshCandidateGenerator.candidates(hashes, HammingDistance.SIMILAR_MAX)
+        val allPairs = hashes.size * (hashes.size - 1) / 2
+
+        assertTrue("${candidates.size} candidate pairs out of $allPairs", candidates.size < allPairs / 2)
+    }
+
+    @Test fun bandedCandidatesExcludeDegenerateHashesAndSelfPairs() {
+        val candidates = DHashLshCandidateGenerator.candidates(
+            listOf(0L, -1L, base, flip(base, 4)),
+            HammingDistance.SIMILAR_MAX,
+        )
+
+        assertEquals(setOf(2 to 3), candidates)
+        assertTrue(candidates.all { it.first < it.second })
     }
 
     @Test fun disjointSetMergesAndCompresses() {
