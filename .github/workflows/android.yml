@@ -43,6 +43,8 @@ jobs:
           grep -q '"version"[[:space:]]*:[[:space:]]*10' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
       - name: Run Room migration tests on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 35
           target: google_apis
