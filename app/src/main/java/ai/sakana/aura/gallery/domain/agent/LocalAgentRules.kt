@@ -98,6 +98,42 @@ object AgentActionPolicy {
         phrases.any { phrase -> value == phrase || value.startsWith("$phrase ") || value.endsWith(" $phrase") || value.contains(" $phrase ") }
 }
 
+/**
+ * Keeps local identifiers and gallery metadata out of model-requested external searches.
+ * The caller must still obtain explicit user confirmation before opening a browser.
+ */
+object WebSearchPolicy {
+    fun validationError(query: String, privateMediaValues: Collection<String> = emptyList()): String? {
+        val value = query.trim()
+        if (value.isBlank()) return "Provide a public topic to search on the web."
+        if (value.length > MAX_QUERY_LENGTH) return "Web searches are limited to 180 characters."
+        if (value.any { it.code < 0x20 }) return "Web search queries cannot contain control characters or line breaks."
+
+        val sensitivePatterns = listOf(
+            Regex("""(?i)\b(?:content|file|android\.resource)://"""),
+            Regex("""(?i)(?:^|\s)/(?:storage|data/user|data/data|sdcard|mnt)/[^\s]+"""),
+            Regex("""(?i)\b[A-Z]:\\[^\s]+"""),
+            Regex("""(?i)\b[^\s/\\]+\.(?:jpe?g|png|webp|gif|bmp|heic|heif|dng|raw|mp4|mov|mkv|webm|3gp)\b"""),
+        )
+        if (sensitivePatterns.any { it.containsMatchIn(value) }) {
+            return "This query contains a local path, media URI, or photo/video filename. Search only for a public topic."
+        }
+
+        val normalized = value.lowercase(Locale.ROOT)
+        val includesPrivateMedia = privateMediaValues.asSequence()
+            .map(String::trim)
+            .filter { it.length >= MIN_PRIVATE_VALUE_LENGTH }
+            .any { normalized.contains(it.lowercase(Locale.ROOT)) }
+        if (includesPrivateMedia) {
+            return "This query contains information from your local gallery. Remove the private metadata and try again."
+        }
+        return null
+    }
+
+    const val MAX_QUERY_LENGTH = 180
+    private const val MIN_PRIVATE_VALUE_LENGTH = 5
+}
+
 object MediaVersionRules {
     private val supportedOperations = setOf("AI_ERASE", "CHAT_EDIT", "TONE_EDIT", "TEXT_ERASE", "WATERMARK_ERASE")
 

@@ -34,10 +34,10 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Compile, lint, and test
-        run: ./gradlew --no-daemon --stacktrace :app:check :app:testDebugUnitTest
+        run: ./gradlew --no-daemon --stacktrace :app:check :app:testDebugUnitTest :app:assembleDebug :app:lint
       - name: Verify generated Android version
         run: ./gradlew --no-daemon :app:printResolvedVersion
-      - name: Verify exported Room schema v9
+      - name: Verify exported Room schema v10
         run: |
-          test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/9.json
-          grep -q '"version"[[:space:]]*:[[:space:]]*9' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/9.json
+          test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
+          grep -q '"version"[[:space:]]*:[[:space:]]*10' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json

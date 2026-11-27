@@ -49,6 +49,25 @@ class LocalAgentRulesTest {
     }
 
     @Test
+    fun web_search_rejects_local_uris_paths_filenames_and_gallery_metadata() {
+        assertNotNull(WebSearchPolicy.validationError("look up content://media/external/images/42"))
+        assertNotNull(WebSearchPolicy.validationError("search /storage/emulated/0/DCIM/private.jpg"))
+        assertNotNull(WebSearchPolicy.validationError("find IMG_20261127_104455.jpg"))
+        assertNotNull(
+            WebSearchPolicy.validationError(
+                "find the client shoot location",
+                privateMediaValues = listOf("Client Shoot"),
+            ),
+        )
+    }
+
+    @Test
+    fun web_search_accepts_short_public_topics_and_rejects_oversized_queries() {
+        assertNull(WebSearchPolicy.validationError("best photo editing practices"))
+        assertNotNull(WebSearchPolicy.validationError("x".repeat(WebSearchPolicy.MAX_QUERY_LENGTH + 1)))
+    }
+
+    @Test
     fun imported_skill_parser_limits_size_and_drops_executable_payloads() {
         val parsed = AgentSkillParser.parse(
             fileName = "photo-editing.md",

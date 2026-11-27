@@ -84,6 +84,7 @@ import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.agent.AgentActionPolicy
+import ai.sakana.aura.gallery.domain.agent.WebSearchPolicy
 import ai.sakana.aura.gallery.domain.agent.ShotSequence
 import ai.sakana.aura.gallery.data.local.EditHistoryEntity
 import ai.sakana.aura.gallery.domain.editing.EditParams
@@ -120,6 +121,11 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val trashedItems by viewModel.trashedItems.collectAsState()
     val visibleItems = if (MediaPermissionPolicy.canDisplayCachedMedia(access)) items else emptyList()
     val visibleTrashedItems = if (MediaPermissionPolicy.canDisplayCachedMedia(access)) trashedItems else emptyList()
+    val webSearchPrivateValues = remember(visibleItems, visibleTrashedItems) {
+        (visibleItems + visibleTrashedItems).flatMap { item ->
+            listOfNotNull(item.contentUri, item.displayName, item.relativePath)
+        }.distinct()
+    }
     val refreshing by viewModel.isRefreshing.collectAsState()
     val error by viewModel.errorMessage.collectAsState()
     val sceneClusters by viewModel.sceneClusters.collectAsState()
@@ -145,6 +151,8 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     }
     val editorHistory by editorHistoryFlow.collectAsState(initial = null)
     var pendingTrashUris by remember { mutableStateOf<List<String>?>(null) }
+    var pendingWebSearchQuery by remember { mutableStateOf<String?>(null) }
+    var webSearchError by remember { mutableStateOf<String?>(null) }
     var moreOpen by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(
@@ -197,6 +205,8 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             editing = null
             aiErasing = null
             pendingTrashUris = null
+            pendingWebSearchQuery = null
+            webSearchError = null
         }
     }
 
@@ -366,10 +376,12 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     }
                     "open_settings" -> { destination = Destination.SETTINGS; "Opened Aura Settings." }
                     "search_web" -> {
-                        val query = args["query"].orEmpty().trim()
-                        if (query.isBlank()) error("Provide a topic to search on the web.")
-                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=${android.net.Uri.encode(query)}")))
-                        "Opened a browser search for '$query'. No gallery image or private media was shared."
+                        val query = args["query"].orEmpty()
+                        val policyError = WebSearchPolicy.validationError(query, webSearchPrivateValues)
+                        if (policyError != null) error(policyError)
+                        if (pendingWebSearchQuery != null) error("A web search is already waiting for your confirmation.")
+                        pendingWebSearchQuery = query.trim()
+                        "Waiting for your confirmation. No browser was opened and no search query was sent."
                     }
                     else -> error("Aura rejected an unsupported action: ${action.tool}.")
                 }
@@ -387,6 +399,54 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             percent = progress.percent,
             errorMessage = progress.errorMessage,
             onDismiss = viewModel::dismissExportProgress,
+        )
+    }
+
+    if (pendingWebSearchQuery != null) {
+        val query = pendingWebSearchQuery.orEmpty()
+        val validationError = WebSearchPolicy.validationError(query, webSearchPrivateValues)
+        AlertDialog(
+            onDismissRequest = {
+                pendingWebSearchQuery = null
+                webSearchError = null
+            },
+            title = { Text("Open an external web search?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Aura will open your browser and send only the exact text below to the search provider. Your photos and gallery files will not be attached.")
+                    Text(query, color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                    validationError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                    webSearchError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = validationError == null,
+                    onClick = {
+                        val approvedQuery = pendingWebSearchQuery ?: return@TextButton
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://www.google.com/search?q=" + Uri.encode(approvedQuery)),
+                                ),
+                            )
+                        }.onSuccess {
+                            pendingWebSearchQuery = null
+                            webSearchError = null
+                        }.onFailure {
+                            Timber.w(it, "Unable to open approved Aura web search")
+                            webSearchError = "No browser could open this search. No search was sent."
+                        }
+                    },
+                ) { Text("Open browser search") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingWebSearchQuery = null
+                    webSearchError = null
+                }) { Text("Cancel") }
+            },
         )
     }
 

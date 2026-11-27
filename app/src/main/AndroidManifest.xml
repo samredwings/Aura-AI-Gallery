@@ -10,8 +10,8 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <application
-        android:name=".AuraGalleryApplication"
-        android:allowBackup="true"
+        android:name="ai.sakana.aura.gallery.AuraGalleryApplication"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -43,7 +43,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/diagnostic_file_paths" />
         </provider>
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name="ai.sakana.aura.gallery.MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
