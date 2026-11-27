@@ -64,7 +64,7 @@ The agent may move matching media to Aura's recoverable trash only when the user
 
 ### Web access and privacy
 
-`search_web` is for factual information or explicit web-search requests. It opens an external browser/search destination. The local agent must not send private photos, content URIs, gallery contents or other personal media data to web search. Network access is used for model downloads and external searches; local chat, recognition and inpainting are on-device operations.
+`search_web` is available when external information is needed or the user requests a search. Before opening an external browser, Aura validates the query and presents the exact text for user approval. The app rejects content URIs, local storage paths, common photo/video filenames, and values matching the visible or recently deleted gallery metadata. No photo or file is attached to the search. Network access is used for model downloads and approved external searches; local chat, recognition and inpainting are on-device operations.
 
 ## 2. AI Erase
 
