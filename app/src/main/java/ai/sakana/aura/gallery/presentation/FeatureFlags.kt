@@ -5,5 +5,5 @@ internal object FeatureFlags {
     const val cloudBackupEnabled = false
     const val megaEnabled = false
     const val teraboxEnabled = false
-    const val videoFrameAnalysisEnabled = false
+    const val videoFrameAnalysisEnabled = true
 }

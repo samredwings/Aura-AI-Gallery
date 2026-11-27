@@ -241,8 +241,8 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                 onBranchPreset = { preset, name -> viewModel.branchEditPreset(preset.id, name) },
                 onDeletePreset = viewModel::deleteEditPreset,
                 onResetHistory = { viewModel.resetEditHistory(editing!!.contentUri) },
-                onSaveCopy = { matrix, params ->
-                    viewModel.exportEditedCopy(editing!!, matrix.values, params)
+                onSaveCopy = { matrix, params, rotation, cropRatio ->
+                    viewModel.exportEditedCopy(editing!!, matrix.values, params, rotation, cropRatio)
                 },
             )
         }
@@ -251,16 +251,30 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
 
     if (viewing != null) {
         BackHandler { viewing = null }
+        val sourceItems = if (viewing!!.isTrashed) visibleTrashedItems else visibleItems
+        val orderedViewerItems = remember(sourceItems) { sourceItems.sortedByDescending(MediaItem::dateTakenEpochMillis) }
+        val foundIndex = orderedViewerItems.indexOfFirst { it.contentUri == viewing!!.contentUri }
+        val viewerItems = if (foundIndex >= 0) orderedViewerItems else listOf(viewing!!)
+        val viewerIndex = foundIndex.takeIf { it >= 0 } ?: 0
+        val activeItem = viewerItems[viewerIndex]
         ScreenErrorBoundary(screenName = "Media viewer", onRetry = { viewing = null }) {
             MediaViewerScreen(
-            item = visibleItems.firstOrNull { it.contentUri == viewing!!.contentUri }
-                ?: visibleTrashedItems.firstOrNull { it.contentUri == viewing!!.contentUri }
-                ?: viewing!!,
-            onBack = { viewing = null },
-            onShare = { shareMedia(context, listOf(viewing!!)) },
-            onFavorite = { viewModel.toggleFavorite(viewing!!.contentUri) },
-            onEdit = { editing = viewing },
-            onDelete = { pendingTrashUris = listOf(viewing!!.contentUri) },
+                item = activeItem,
+                onBack = { viewing = null },
+                onShare = { shareMedia(context, listOf(activeItem)) },
+                onFavorite = { viewModel.toggleFavorite(activeItem.contentUri) },
+                onEdit = { editing = activeItem },
+                onDelete = { pendingTrashUris = listOf(activeItem.contentUri) },
+                itemPosition = viewerIndex + 1,
+                itemCount = viewerItems.size,
+                canNavigatePrevious = viewerIndex > 0,
+                canNavigateNext = viewerIndex < viewerItems.lastIndex,
+                onNavigatePrevious = {
+                    MediaViewerNavigation.targetIndex(viewerIndex, viewerItems.size, -1)?.let { viewing = viewerItems[it] }
+                },
+                onNavigateNext = {
+                    MediaViewerNavigation.targetIndex(viewerIndex, viewerItems.size, 1)?.let { viewing = viewerItems[it] }
+                },
             )
         }
         return
@@ -420,9 +434,11 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     items = visibleItems,
                     faces = detectedFaces,
                     clusters = personClusters,
+                    sceneClusters = sceneClusters,
                     savedPeople = savedPeople,
                     progress = recognitionProgress,
                     onAnalyze = { viewModel.analyzeLibrary(visibleItems) },
+                    onOpenMedia = { viewing = it },
                     onSavePerson = viewModel::savePerson,
                     onRenamePerson = viewModel::renamePerson,
                     onMergePersons = viewModel::mergePersons,
@@ -456,7 +472,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     )
                 }
                 Destination.SETTINGS -> ScreenErrorBoundary(screenName = "Settings", errorMessage = error, onRetry = viewModel::refresh) {
-                    SettingsScreen(context, visibleItems)
+                    SettingsScreen(context, visibleItems, onBack = { destination = Destination.EXPLORE })
                 }
             }
         }

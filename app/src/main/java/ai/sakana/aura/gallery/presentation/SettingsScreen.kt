@@ -95,7 +95,7 @@ import java.util.Locale
 import timber.log.Timber
 
 @Composable
-internal fun SettingsScreen(context: Context, items: List<MediaItem>) {
+internal fun SettingsScreen(context: Context, items: List<MediaItem>, onBack: () -> Unit) {
     val bytes = remember(items) { items.sumOf { it.sizeBytes.coerceAtLeast(0L) } }
     val exportSettingsStore = remember(context) { ExportSettingsStore(context) }
     var exportSettings by remember(context) { mutableStateOf(exportSettingsStore.load()) }
@@ -103,8 +103,20 @@ internal fun SettingsScreen(context: Context, items: List<MediaItem>) {
     val databaseBytes = remember(database.lastModified()) {
         database.length() + java.io.File(database.path + "-wal").length()
     }
+    BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
-        PageHeader("Settings", "BUILD · ${BuildConfig.VERSION_NAME}")
+        Row(
+            Modifier.fillMaxWidth().height(58.dp).padding(start = 4.dp, end = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Go back", tint = AuraTokens.Paper)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Settings", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("BUILD · ${BuildConfig.VERSION_NAME}", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 0.7.sp)
+            }
+        }
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 6.dp),
         ) {

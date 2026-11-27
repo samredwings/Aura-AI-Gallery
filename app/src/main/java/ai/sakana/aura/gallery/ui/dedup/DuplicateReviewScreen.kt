@@ -126,7 +126,7 @@ fun DuplicateReviewScreen(
                         state.exactGroups.size.toString() + " GROUPS · " + Formatter.formatShortFileSize(context, state.totalWastedBytes) + " RECLAIMABLE",
                         Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 1.sp,
                     )
-                    LazyColumn(Modifier.fillMaxSize()) {
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                         items(state.exactGroups, key = { it.sha256 }) { group ->
                             CopyGroupCard(
                                 title = group.count.toString() + " IDENTICAL COPIES · " + Formatter.formatShortFileSize(context, group.wastedBytes) + " WASTED",
@@ -145,10 +145,10 @@ fun DuplicateReviewScreen(
                 state.hasScannedSimilar && !state.isScanning && state.similarGroups.isEmpty() -> EmptyNote("No similar photos found.")
                 state.similarGroups.isNotEmpty() -> {
                     Text(
-                        state.similarGroups.size.toString() + " GROUPS",
+                        state.similarGroups.size.toString() + " GROUPS · " + state.similarGroups.sumOf { it.count } + " MEDIA ITEMS",
                         Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 1.sp,
                     )
-                    LazyColumn(Modifier.fillMaxSize()) {
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                         items(state.similarGroups, key = { it.recommendedKeepUri }) { group ->
                             CopyGroupCard(
                                 title = group.count.toString() + (if (group.isNearExact) " NEAR-IDENTICAL" else " SIMILAR") + " · MAX DISTANCE " + group.maxDistance,
