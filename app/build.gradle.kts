@@ -215,6 +215,9 @@ dependencies {
     implementation(libs.litertlm.android)
     implementation(libs.mlkit.text.recognition)
     implementation(libs.gson)
+    // Room 2.8.5 migration tooling uses serialization 1.8.1; align the app runtime
+    // with it to avoid resolving the older lifecycle-transitive 1.7.3 core.
+    implementation(libs.kotlinx.serialization.core)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
