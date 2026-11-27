@@ -27,6 +27,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +86,7 @@ import ai.sakana.aura.gallery.domain.recognition.PersonCluster
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
 import ai.sakana.aura.gallery.platform.MediaAccessLevel
 import ai.sakana.aura.gallery.platform.MediaPermissionPolicy
+import kotlin.math.abs
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -97,9 +100,16 @@ internal fun MediaViewerScreen(
     onFavorite: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    itemPosition: Int = 1,
+    itemCount: Int = 1,
+    canNavigatePrevious: Boolean = false,
+    canNavigateNext: Boolean = false,
+    onNavigatePrevious: () -> Unit = {},
+    onNavigateNext: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val locale = LocalLocale.current.platformLocale
+    val density = LocalDensity.current
     var moreOpen by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(Color.Black)) {
@@ -111,11 +121,33 @@ internal fun MediaViewerScreen(
             Column(Modifier.weight(1f)) {
                 Text(dateHeading(java.time.Instant.ofEpochMilli(item.dateTakenEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate()), color = Color.White, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 val timestamp = DateTimeFormatter.ofPattern("h:mm a", locale).withZone(ZoneId.systemDefault()).format(java.time.Instant.ofEpochMilli(item.dateTakenEpochMillis))
-                Text("$timestamp · ${if (item.isVideo) "Video" else "Photo"}", color = Color.LightGray, fontFamily = Manrope, fontSize = 10.sp)
+                Text("$timestamp · ${if (item.isVideo) "Video" else "Photo"} · $itemPosition/$itemCount", color = Color.LightGray, fontFamily = Manrope, fontSize = 10.sp)
             }
             IconButton(onClick = { showDetails = true }) { Icon(Icons.Outlined.Info, "Media details", tint = Color.White) }
         }
-        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.fillMaxWidth().weight(1f).background(Color.Black).pointerInput(item.contentUri, canNavigatePrevious, canNavigateNext) {
+                val swipeThreshold = with(density) { 64.dp.toPx() }
+                var dragDistance = 0f
+                var navigated = false
+                detectHorizontalDragGestures(
+                    onDragEnd = { dragDistance = 0f; navigated = false },
+                    onDragCancel = { dragDistance = 0f; navigated = false },
+                    onHorizontalDrag = { change, amount ->
+                        dragDistance += amount
+                        if (!navigated && abs(dragDistance) >= swipeThreshold) {
+                            when {
+                                dragDistance < 0f && canNavigateNext -> onNavigateNext()
+                                dragDistance > 0f && canNavigatePrevious -> onNavigatePrevious()
+                            }
+                            navigated = true
+                            change.consume()
+                        }
+                    },
+                )
+            },
+            contentAlignment = Alignment.Center,
+        ) {
             if (item.isVideo) {
                 key(item.contentUri) {
                     AndroidView(

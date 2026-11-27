@@ -6,9 +6,11 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
 import ai.sakana.aura.gallery.domain.editing.EditParams
+import ai.sakana.aura.gallery.domain.editing.EditorCropRules
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -22,6 +24,8 @@ data class ExportOptions(
     val includeEditHistory: Boolean = false,
     val presetName: String? = null,
     val params: EditParams = EditParams(),
+    val rotationDegrees: Int = 0,
+    val cropAspectRatio: Float? = null,
 ) {
     companion object {
         fun from(settings: ExportSettings, presetName: String?, params: EditParams): ExportOptions {
@@ -64,10 +68,32 @@ object MediaEditorExporter {
         } ?: error("The original photo format could not be decoded.")
         onProgress(20)
 
-        val edited = Bitmap.createBitmap(decoded.width, decoded.height, Bitmap.Config.ARGB_8888)
+        val intermediates = ArrayList<Bitmap>(2)
+        var edited: Bitmap? = null
         try {
+            var working = decoded
+            val rotation = EditorCropRules.normalizeRotation(options.rotationDegrees)
+            if (rotation != 0) {
+                working = Bitmap.createBitmap(
+                    decoded,
+                    0,
+                    0,
+                    decoded.width,
+                    decoded.height,
+                    Matrix().apply { postRotate(rotation.toFloat()) },
+                    true,
+                ).also(intermediates::add)
+            }
+            options.cropAspectRatio?.let { ratio ->
+                val crop = EditorCropRules.centerCrop(working.width, working.height, ratio)
+                    ?: error("The selected crop ratio is invalid.")
+                working = Bitmap.createBitmap(working, crop.left, crop.top, crop.width, crop.height)
+                    .also(intermediates::add)
+            }
+
+            edited = Bitmap.createBitmap(working.width, working.height, Bitmap.Config.ARGB_8888)
             Canvas(edited).drawBitmap(
-                decoded, 0f, 0f,
+                working, 0f, 0f,
                 Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
                     colorFilter = ColorMatrixColorFilter(android.graphics.ColorMatrix(matrixValues))
                 },
@@ -92,7 +118,8 @@ object MediaEditorExporter {
             return result
         } finally {
             decoded.recycle()
-            edited.recycle()
+            intermediates.distinct().forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
+            edited?.recycle()
         }
     }
 
@@ -104,7 +131,14 @@ object MediaEditorExporter {
             resolver.openFileDescriptor(destination, "rw")?.use { pfd ->
                 val target = ExifInterface(pfd.fileDescriptor)
                 if (original != null) {
-                    ExifTagPolicy.copy({ tag -> original.getAttribute(tag) }, { tag, value -> target.setAttribute(tag, value) })
+                    val pixelsWereTransformed = EditorCropRules.normalizeRotation(options.rotationDegrees) != 0 || options.cropAspectRatio != null
+                    ExifTagPolicy.copy(
+                        read = { tag -> if (pixelsWereTransformed && tag == ExifInterface.TAG_ORIENTATION) null else original.getAttribute(tag) },
+                        write = { tag, value -> target.setAttribute(tag, value) },
+                    )
+                    if (pixelsWereTransformed) {
+                        target.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+                    }
                 }
                 if (options.includeEditHistory) {
                     target.setAttribute(ExifTagPolicy.USER_COMMENT, EditMetadataJson.build(options.presetName, options.params))

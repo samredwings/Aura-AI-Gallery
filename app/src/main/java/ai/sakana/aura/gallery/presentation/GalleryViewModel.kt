@@ -487,13 +487,22 @@ class GalleryViewModel @Inject constructor(
             editHistoryRepository.recordExportedEdit(contentUri, params, System.currentTimeMillis())
         }
 
-    fun exportEditedCopy(item: MediaItem, matrixValues: FloatArray, params: EditParams) {
+    fun exportEditedCopy(
+        item: MediaItem,
+        matrixValues: FloatArray,
+        params: EditParams,
+        rotationDegrees: Int = 0,
+        cropAspectRatio: Float? = null,
+    ) {
         if (_exportProgress.value?.isExporting == true) return
         viewModelScope.launch(Dispatchers.IO) {
             _exportProgress.value = ExportProgressUiState(percent = 0, isExporting = true)
             try {
                 val settings = ExportSettingsStore(applicationContext).load()
-                val options = ExportOptions.from(settings, presetName = "Custom edit", params = params)
+                val options = ExportOptions.from(settings, presetName = "Custom edit", params = params).copy(
+                    rotationDegrees = rotationDegrees,
+                    cropAspectRatio = cropAspectRatio,
+                )
                 MediaEditorExporter.saveToneEdit(
                     context = applicationContext,
                     item = item,

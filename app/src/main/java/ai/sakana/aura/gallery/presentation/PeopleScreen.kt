@@ -96,9 +96,11 @@ internal fun PeopleScreen(
     items: List<MediaItem>,
     faces: List<DetectedFace>,
     clusters: List<PersonCluster>,
+    sceneClusters: List<SceneCluster>,
     savedPeople: List<PersonClusterCandidate>,
     progress: RecognitionProgress,
     onAnalyze: () -> Unit,
+    onOpenMedia: (MediaItem) -> Unit,
     onSavePerson: (PersonCluster) -> Unit,
     onRenamePerson: (Long, String) -> Unit,
     onMergePersons: (Long, Long) -> Unit,
@@ -112,7 +114,7 @@ internal fun PeopleScreen(
     val mediaByUri = remember(items) { items.associateBy(MediaItem::contentUri) }
     val detectedMedia = remember(faces) { faces.groupBy(DetectedFace::contentUri) }
     Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
-        PageHeader("People", "ON-DEVICE IDENTITY SUGGESTIONS")
+        PageHeader("People", "LAYER 1 · FACE IDENTITY")
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -141,7 +143,7 @@ internal fun PeopleScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(if (progress.isRunning) "ANALYZING ON THIS DEVICE" else "LAST ANALYSIS", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp)
+                        Text(if (progress.isRunning) "FACE + VISUAL INDEXING" else "LAST ANALYSIS", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp)
                         Text("${progress.completed}/${progress.total}", color = AuraTokens.Paper, fontFamily = JetBrainsMono, fontSize = 10.sp)
                     }
                     LinearProgressIndicator(
@@ -212,6 +214,35 @@ internal fun PeopleScreen(
                 }
             }
 
+            Text("LAYER 2 · VISUAL SIMILARITY", Modifier.padding(top = 10.dp), color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 1.sp)
+            Text(
+                "Related photos and videos are grouped by visual content after the same library analysis. These groups can connect a continuing scene even when a face, expression or angle changes; they are suggestions, not proof of identical media.",
+                color = AuraTokens.PaperFaint,
+                fontFamily = Manrope,
+                fontSize = 10.sp,
+                lineHeight = 15.sp,
+            )
+            val visibleSceneGroups = sceneClusters.mapNotNull { cluster ->
+                val members = cluster.mediaUris.mapNotNull(mediaByUri::get)
+                if (members.size < 2) null else cluster to members
+            }
+            if (visibleSceneGroups.isEmpty()) {
+                EmptyIndexState(
+                    if (progress.isRunning) "Visual groups are building" else "No visual-similarity groups yet",
+                    if (items.isEmpty()) "Add local photos or videos first. Both analysis layers run on this device."
+                    else "Run Analyze Library above. The visual layer appears here automatically as media embeddings are indexed.",
+                )
+            } else {
+                visibleSceneGroups.forEachIndexed { index, (cluster, members) ->
+                    VisualSimilarityClusterCard(
+                        index = index,
+                        cluster = cluster,
+                        members = members,
+                        onOpenMedia = onOpenMedia,
+                    )
+                }
+            }
+
             if (detectedMedia.isNotEmpty()) {
                 Text("MEDIA WITH FACE DETECTIONS", Modifier.padding(top = 8.dp), color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 1.sp)
                 detectedMedia.entries.sortedByDescending { it.value.size }.forEach { (uri, locations) ->
@@ -230,7 +261,7 @@ internal fun PeopleScreen(
                 }
             }
             Text(
-                "LOCAL FACE FEATURES · NO UPLOAD · NO AUTOMATIC IDENTITY MERGES",
+                "LOCAL FACE + VISUAL FEATURES · NO UPLOAD · NO AUTOMATIC IDENTITY MERGES",
                 Modifier.padding(vertical = 12.dp),
                 color = AuraTokens.PaperFaint,
                 fontFamily = JetBrainsMono,
@@ -291,6 +322,49 @@ internal fun PeopleScreen(
             },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun VisualSimilarityClusterCard(
+    index: Int,
+    cluster: SceneCluster,
+    members: List<MediaItem>,
+    onOpenMedia: (MediaItem) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AuraTokens.Surface1).padding(11.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Related media ${(index + 1).toString().padStart(2, '0')}", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("${members.size} photos/videos", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp)
+            }
+            Text("${(cluster.averageSimilarity * 100).toInt()}%", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            members.forEach { media ->
+                Box(
+                    Modifier.size(82.dp).clip(RoundedCornerShape(6.dp)).background(AuraTokens.Surface2)
+                        .clickable { onOpenMedia(media) },
+                ) {
+                    if (media.isVideo) VideoFrameThumbnail(media, Modifier.fillMaxSize())
+                    else AsyncImage(
+                        model = media.contentUri.toUri(),
+                        contentDescription = media.displayName ?: "Related photo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                    if (media.isVideo) {
+                        Text("VIDEO", Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color(0x99000000), RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 2.dp), color = Color.White, fontFamily = JetBrainsMono, fontSize = 7.sp)
+                    }
+                }
+            }
+        }
     }
 }
 

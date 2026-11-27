@@ -45,6 +45,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -79,6 +80,7 @@ import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.data.local.EditHistoryEntity
 import ai.sakana.aura.gallery.domain.editing.EditParams
+import ai.sakana.aura.gallery.domain.editing.EditorCropRules
 import ai.sakana.aura.gallery.ui.edit.EditHistoryPanel
 import ai.sakana.aura.gallery.domain.recognition.AiSet
 import ai.sakana.aura.gallery.domain.recognition.AiSetRules
@@ -103,7 +105,7 @@ internal fun AuraEditorScreen(
     onBranchPreset: (EditHistoryEntity, String) -> Unit,
     onDeletePreset: (EditHistoryEntity) -> Unit,
     onResetHistory: () -> Unit,
-    onSaveCopy: (ColorMatrix, EditParams) -> Unit,
+    onSaveCopy: (ColorMatrix, EditParams, Int, Float?) -> Unit,
 ) {
     var brightness by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var contrast by remember(item.contentUri) { mutableFloatStateOf(0f) }
@@ -112,6 +114,10 @@ internal fun AuraEditorScreen(
     var restoredHistory by remember(item.contentUri) { mutableStateOf(false) }
     var compareOriginal by remember { mutableStateOf(false) }
     var showAiEditInfo by remember { mutableStateOf(false) }
+    var editorMode by remember { mutableStateOf(EditorMode.ADJUST) }
+    var rotationDegrees by remember(item.contentUri) { mutableIntStateOf(0) }
+    var cropAspectRatio by remember(item.contentUri) { mutableStateOf<Float?>(null) }
+    var selectedAiTool by remember { mutableStateOf("") }
     val context = LocalContext.current
     val params = remember(brightness, contrast, saturation, warmth) {
         EditParams(brightness, contrast, saturation, warmth)
@@ -149,8 +155,8 @@ internal fun AuraEditorScreen(
             AsyncImage(
                 model = item.contentUri.toUri(),
                 contentDescription = "Photo preview",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().graphicsLayer { rotationZ = if (compareOriginal) 0f else rotationDegrees.toFloat() },
+                contentScale = if (cropAspectRatio == null) ContentScale.Fit else ContentScale.Crop,
                 colorFilter = if (compareOriginal) null else ColorFilter.colorMatrix(matrix),
             )
             Text(
@@ -166,29 +172,92 @@ internal fun AuraEditorScreen(
         ) {
             Box(Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(3.dp).background(AuraTokens.HairlineStrong, CircleShape))
             Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Tone", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("ORIGINAL PRESERVED", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 0.4.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EditorMode.values().forEach { mode ->
+                    Box(Modifier.weight(1f)) {
+                        HairlineButton(
+                            text = if (editorMode == mode) "✓ ${mode.label}" else mode.label,
+                            onClick = { editorMode = mode },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = true,
+                        )
+                    }
+                }
             }
-            ToneSlider("Brightness", brightness) { brightness = it }
-            ToneSlider("Contrast", contrast) { contrast = it }
-            ToneSlider("Saturation", saturation) { saturation = it }
-            ToneSlider("Warmth", warmth) { warmth = it }
-            Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("ORIGINAL", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
-                Text("LIVE PREVIEW", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            Spacer(Modifier.height(12.dp))
+            when (editorMode) {
+                EditorMode.ADJUST -> {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Tone and light", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("ORIGINAL PRESERVED", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 0.4.sp)
+                    }
+                    ToneSlider("Brightness", brightness) { brightness = it }
+                    ToneSlider("Contrast", contrast) { contrast = it }
+                    ToneSlider("Saturation", saturation) { saturation = it }
+                    ToneSlider("Warmth", warmth) { warmth = it }
+                    Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("ORIGINAL", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                        Text("LIVE PREVIEW", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    }
+                }
+                EditorMode.CROP -> {
+                    Text("Rotate and crop", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Choose a crop shape. The original file is never overwritten.", color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 10.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Original" to null, "1:1" to 1f, "4:3" to (4f / 3f), "16:9" to (16f / 9f)).forEach { (label, ratio) ->
+                            Box(Modifier.weight(1f)) {
+                                HairlineButton(
+                                    text = if (cropAspectRatio == ratio) "✓ $label" else label,
+                                    onClick = { cropAspectRatio = ratio },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f)) {
+                            HairlineButton("↶ Rotate left", { rotationDegrees = EditorCropRules.normalizeRotation(rotationDegrees - 90) }, Modifier.fillMaxWidth())
+                        }
+                        Box(Modifier.weight(1f)) {
+                            HairlineButton("Rotate right ↷", { rotationDegrees = EditorCropRules.normalizeRotation(rotationDegrees + 90) }, Modifier.fillMaxWidth())
+                        }
+                    }
+                    Text(
+                        "${rotationDegrees}° rotation · ${cropAspectRatio?.let { String.format(Locale.US, "%.2f:1", it) } ?: "original frame"}",
+                        color = AuraTokens.PaperFaint,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 9.sp,
+                    )
+                }
+                EditorMode.AI -> {
+                    Text("AI object tools", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Generative object removal and canvas extension need a configured image model service. No AI provider is connected in this build.", color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 11.sp, lineHeight = 16.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.weight(1f)) {
+                            HairlineButton("Remove object", { selectedAiTool = "Remove object"; showAiEditInfo = true }, Modifier.fillMaxWidth())
+                        }
+                        Box(Modifier.weight(1f)) {
+                            HairlineButton("Extend image", { selectedAiTool = "Extend image"; showAiEditInfo = true }, Modifier.fillMaxWidth())
+                        }
+                    }
+                    Text("Provider connection required · source image stays local until you choose a provider", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 8.sp, lineHeight = 12.sp)
+                }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Box(Modifier.weight(1f)) {
                     HoldCompareButton("Hold to compare", { compareOriginal = true }, { compareOriginal = false })
                 }
                 Box(Modifier.weight(1f)) {
-                    HairlineButton("Save copy", { onSaveCopy(matrix, params) }, modifier = Modifier.fillMaxWidth(), enabled = !isExporting)
+                    HairlineButton(
+                        if (isExporting) "Exporting…" else "Save edited copy",
+                        { onSaveCopy(matrix, params, rotationDegrees, cropAspectRatio) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isExporting,
+                    )
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            HairlineButton("AI Edit", { showAiEditInfo = true }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             EditHistoryPanel(
                 presets = editHistory.orEmpty(),
@@ -215,11 +284,15 @@ internal fun AuraEditorScreen(
     if (showAiEditInfo) {
         AlertDialog(
             onDismissRequest = { showAiEditInfo = false },
-            title = { Text("AI Edit is not connected") },
-            text = { Text("The AI editing model and processing service have not been configured yet. This action does not upload your photo or change the original.") },
+            title = { Text("${selectedAiTool.ifBlank { "AI Edit" }} needs a provider") },
+            text = { Text("Aura has no generative image model or processing endpoint configured. Connect a compatible image-editing provider before using object removal or canvas extension. No image has been uploaded or changed.") },
             confirmButton = { TextButton(onClick = { showAiEditInfo = false }) { Text("OK") } },
         )
     }
+}
+
+private enum class EditorMode(val label: String) {
+    ADJUST("Adjust"), CROP("Crop"), AI("AI Tools"),
 }
 
 @Composable

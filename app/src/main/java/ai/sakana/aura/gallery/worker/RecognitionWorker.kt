@@ -114,7 +114,7 @@ class RecognitionWorker @AssistedInject constructor(
             )
         }
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle("Analyzing photos and videos")
+            .setContentTitle("Analyzing faces and visual similarities")
             .setContentText("$current of $total items checked")
             .setSmallIcon(android.R.drawable.ic_menu_gallery)
             .setOngoing(true)
