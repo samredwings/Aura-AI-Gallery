@@ -69,6 +69,8 @@
 - [x] Store real `content://` URIs and stable MediaStore IDs.
 - [x] Add Room entities, DAO and database with one-shot reads, observation Flows and M1 URI/date/favourite indices. Hash/tag indices arrive with their later feature data.
 - [x] Export Room schema version 1 through KAPT and keep destructive migration fallback disabled; add explicit migrations with each schema change.
+- [x] Add instrumented MigrationTestHelper coverage for the checked-in v8→v10 and v9→v10 upgrade paths, including media-row preservation and v10 schema validation.
+- [ ] Recover the authentic v7 schema snapshot and validate the historical v7→v8 migration; do not synthesize a snapshot.
 - [x] Use persisted epoch-millisecond `Long` timestamps.
 - [x] Add repository interface/implementation and `ObserveMediaUseCase`; feature/UI code depends on domain models/contracts.
 - [x] Build a Compose gallery grid with Coil 3 and a configured `SingletonImageLoader`.
@@ -201,6 +203,7 @@ Collect measurements with `adb logcat | grep "PERF metric="`. API 33/34/36 runti
 | 2026-11-19 | Established v2.1 milestone order; created legacy reference branch; added project plan. |
 | 2026-11-19 | Applied the uploaded Aura UI design system to Compose, bundled Instrument Serif/Manrope/JetBrains Mono with OFL licences, added all five destinations and a non-destructive tone preview. Unimplemented M2–M4 data is clearly labelled rather than shown as mock metrics. |
 | 2026-11-19 | Created android/rebuild-m1; added launcher app, MediaStore/Photo Picker repository, Room favourites, permission-aware Compose grid, schema v1, six permission tests and Android CI workflow. Local debug/release/check/unit-test build passed on JDK 21. Device/API and JDK 17 CI gates remain pending. |
+| 2026-11-27 | Added required debug APK artifact publication and Android API 35 emulator-backed Room migration tests for authentic schema v8→v10 and v9→v10 paths. The v7 schema remains unavailable and v7→v8 acceptance stays open until the original snapshot is recovered. |
 
 ## Status vocabulary
 
