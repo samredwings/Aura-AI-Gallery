@@ -41,6 +41,11 @@ jobs:
         run: |
           test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
           grep -q '"version"[[:space:]]*:[[:space:]]*10' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
+      - name: Enable KVM group permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Run Room migration tests on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -50,6 +55,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          disable-linux-hw-accel: auto
+          emulator-boot-timeout: 900
           disable-animations: true
           script: ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest
       - name: Verify debug APK exists
