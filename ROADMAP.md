@@ -48,9 +48,9 @@
 
 - [x] Create the clean Android implementation branch `android/rebuild-m1`; keep the legacy web source on its reference branch.
 - [x] Set root project name to `AuraGallery` and application ID/namespace to `ai.sakana.aura.gallery`.
-- [x] Add the complete Gradle 8.13 wrapper and pin AGP 8.13.0 / JDK 17 target / compileSdk 36 / targetSdk 36 / minSdk 26.
+- [x] Add the complete Gradle 8.13 wrapper and pin AGP 8.13.2 / JDK 17 target / compileSdk 36 / targetSdk 36 / minSdk 26.
 - [x] Pin Kotlin 2.3.20 with KSP 2.3.12; the complete JDK 17 toolchain combination passed the Android verification workflow.
-- [x] Add a stable dependency version catalog; use stable releases only. Coil is pinned to 3.0.4 for Kotlin 2.0.21 metadata compatibility.
+- [x] Add a stable dependency version catalog; use stable releases only. Coil is pinned to 3.0.4 pending dependency compatibility review.
 - [x] Add the single `:app` module, `@HiltAndroidApp` Application, and working Hilt/KSP wiring. Room 2.8.5 schema processing uses KSP; `kotlin-metadata-jvm:2.4.21` is added to the KSP processor path for LiteRT-LM metadata compatibility.
 - [x] Add all referenced manifest resources: theme, backup rules, data-extraction rules, adaptive launcher icons and ProGuard rules.
 - [x] Configure Timber and baseline unit/instrumentation test dependencies.
