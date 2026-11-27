@@ -147,6 +147,10 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -233,6 +237,7 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.espresso.core)
     debugImplementation(libs.compose.ui.tooling)
 }
