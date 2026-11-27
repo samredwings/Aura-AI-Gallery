@@ -41,6 +41,11 @@ jobs:
         run: |
           test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
           grep -q '"version"[[:space:]]*:[[:space:]]*10' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
+      - name: Verify exported Room schema v7
+        run: |
+          test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/7.json
+          grep -q '"version"[[:space:]]*:[[:space:]]*7' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/7.json
+          ! grep -q 'PLACEHOLDER_RUN_GRADLE_TO_REGENERATE' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/7.json
       - name: Enable KVM group permissions
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
