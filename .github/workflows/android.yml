@@ -41,3 +41,12 @@ jobs:
         run: |
           test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
           grep -q '"version"[[:space:]]*:[[:space:]]*10' app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/10.json
+      - name: Verify debug APK exists
+        run: test -s app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-gallery-debug-apk-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
