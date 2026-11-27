@@ -59,7 +59,7 @@ The LaMa model is approximately **208 MB** and is downloaded once. Erase inferen
 
 The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. Successful GitHub Actions verification runs also execute Room migration tests on an Android API 35 emulator and publish the APK as the `aura-gallery-debug-apk-<run-number>` artifact (14-day retention); open the run under Actions → Android verification and download it from Artifacts. The release APK is currently unsigned unless the documented release-signing environment variables are supplied.
 
-Room 2.8.5 schema processing currently uses KAPT because Room's KSP release path fails under the pinned Kotlin 2.0.21 compiler. Hilt remains on KSP. Review this documented exception during toolchain upgrades.
+Room 2.8.5 schema processing currently uses KSP. The app adds `kotlin-metadata-jvm:2.4.21` to the KSP processor path for Kotlin 2.4 metadata carried by LiteRT-LM 0.19.1. Revalidate this compatibility bridge when upgrading LiteRT-LM, Kotlin or KSP.
 
 ## UI design system
 
