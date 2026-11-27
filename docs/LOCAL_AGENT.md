@@ -54,9 +54,9 @@ Results are suggestions, not proof that shots belong to the same burst or scene.
 
 ### Skills
 
-Use **Learn Skill** to import a Markdown or text file. Aura parses and stores the skill's name, description and instructions in Room, then includes enabled instructions in the local model's system prompt.
+Use **Learn Skill** to import a Markdown or text file. Aura parses and stores the skill's name, description and instructions in Room. Enabled skills are supplied as bounded, explicitly untrusted reference text alongside the user's next message. They are not inserted into the privileged system prompt and are not treated as independent user requests.
 
-A skill is **text guidance, not executable code**. Importing a skill does not install a binary, run a script, grant permissions, add tools or bypass the action allowlist. Treat instructions from external files as untrusted.
+A skill is **untrusted reference material, not executable code or a new user request**. Importing a skill does not install a binary, run a script, grant permissions, add tools or bypass the action allowlist, privacy policy or confirmation requirements. Skill context is limited to five enabled skills and 6,000 instruction characters per turn.
 
 ### Trash and restore
 
