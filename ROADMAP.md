@@ -135,7 +135,7 @@
 
 ## M5 — Advanced features and production hardening
 
-**Status: Not started; intentionally deferred**
+**Status: In progress — local agent and AI Erase vertical slice implemented; broader production hardening and end-to-end image acceptance remain open.**
 
 - [ ] Add Room FTS4 search across title, manual person labels, attire, environment and lighting.
 - [ ] Add storage optimizer insights for large files, similar photos, screenshots and blurred photos.
@@ -143,7 +143,7 @@
 - [ ] Extract stable code into modules only when an actual seam and measurable benefit exist.
 - [ ] Expand unit, integration, UI and screenshot tests.
 - [ ] Enable and validate R8/minification and release configuration.
-- [x] Add the deterministic on-device Aura Agent for safe navigation, library refresh, local recognition and read-only duplicate scans; block destructive free-text commands.
+- [x] Add the on-device Aura Agent using LiteRT-LM/Qwen3 0.6B with structured JSON responses, an explicit action allowlist and bounded arguments.\n- [x] Add local skill import from Markdown/text; imported instructions are guidance only and downloaded code is never executed.\n- [x] Add continuation-shot suggestions using capture time, aspect ratio and perceptual hash; keep suggestions distinct from verified groups and require an explicit save action.\n- [x] Add recoverable trash and restore agent actions; permanent deletion is not exposed by the agent and trash requires explicit user intent.\n- [x] Add AI Erase with manual brush masks, ML Kit text detection and local LaMa ONNX inpainting; save a separate derivative and persist version metadata in Room v10.\n- [ ] Complete image-level acceptance for object, text and watermark removal across varied real photos and device hardware.\n- [ ] Implement full prompt-driven conversational generative editing; the current agent can open the existing editor and AI Erase workflow but is not a general image-generation editor.
 - [ ] Add localization/internationalization and accessibility review.
 - [ ] Run final dependency, security, performance, memory and install/update checks.
 
