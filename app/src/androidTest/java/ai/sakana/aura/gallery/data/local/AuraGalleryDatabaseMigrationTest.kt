@@ -28,6 +28,35 @@ class AuraGalleryDatabaseMigrationTest {
     }
 
     @Test
+    fun migration6To10_preservesMediaAndAppliesEveryRecordedMigration() {
+        helper.createDatabase(TEST_DATABASE, 6).apply {
+            insertMedia("content://aura/migration-v6")
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            10,
+            true,
+            AuraGalleryDatabase.MIGRATION_6_7,
+            AuraGalleryDatabase.MIGRATION_7_8,
+            AuraGalleryDatabase.MIGRATION_8_9,
+            AuraGalleryDatabase.MIGRATION_9_10,
+        )
+        try {
+            assertMediaPreserved(migrated, "content://aura/migration-v6")
+            assertTableExists(migrated, "face_embeddings")
+            assertTableExists(migrated, "person_clusters")
+            assertTableExists(migrated, "edit_history")
+            assertTableExists(migrated, "recognition_progress")
+            assertTableExists(migrated, "media_versions")
+            assertTableExists(migrated, "agent_skills")
+        } finally {
+            migrated.close()
+        }
+    }
+
+    @Test
     fun migration8To10_preservesMediaAndCreatesNewTables() {
         helper.createDatabase(TEST_DATABASE, 8).apply {
             insertMedia("content://aura/migration-v8")
