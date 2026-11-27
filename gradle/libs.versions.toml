@@ -5,6 +5,7 @@ ksp = "2.3.12"
 hilt = "2.58"
 hiltPlugin = "2.58"
 room = "2.8.5"
+kotlinxSerialization = "1.8.1"
 composeBom = "2026.06.00"
 timber = "5.0.1"
 activityCompose = "1.10.1"
@@ -32,6 +33,7 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-runtime = { module = "androidx.compose.runtime:runtime" }
 compose-ui = { module = "androidx.compose.ui:ui" }
