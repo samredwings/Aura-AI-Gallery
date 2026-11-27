@@ -68,6 +68,29 @@ class AuraGalleryDatabaseMigrationTest {
     }
 
     @Test
+    fun migration6To7_preservesMediaAndMatchesExportedV7Schema() {
+        helper.createDatabase(TEST_DATABASE, 6).apply {
+            insertMedia("content://aura/migration-v6-v7")
+            close()
+        }
+
+        // MigrationTestHelper validates the resulting schema against the checked-in 7.json,
+        // including columns, defaults, indexes, primary key, and foreign-key constraints.
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            7,
+            true,
+            AuraGalleryDatabase.MIGRATION_6_7,
+        )
+        try {
+            assertMediaPreserved(migrated, "content://aura/migration-v6-v7")
+            assertTableExists(migrated, "face_embeddings")
+        } finally {
+            migrated.close()
+        }
+    }
+
+    @Test
     fun migration6To10_preservesMediaAndAppliesEveryRecordedMigration() {
         helper.createDatabase(TEST_DATABASE, 6).apply {
             insertMedia("content://aura/migration-v6")
