@@ -34,7 +34,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Compile, lint, and test
-        run: ./gradlew --no-daemon --stacktrace :app:check :app:testDebugUnitTest :app:assembleDebug :app:lint
+        run: ./gradlew --no-daemon --stacktrace :app:check :app:testDebugUnitTest :app:lint
+      - name: Build debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug
       - name: Verify generated Android version
         run: ./gradlew --no-daemon :app:printResolvedVersion
       - name: Verify exported Room schema v10
@@ -66,10 +68,11 @@ jobs:
           script: ./gradlew --no-daemon --stacktrace :app:connectedDebugAndroidTest
       - name: Verify debug APK exists
         run: test -s app/build/outputs/apk/debug/app-debug.apk
-      - name: Publish installable debug APK
+      - name: Upload debug APK artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: aura-gallery-debug-apk-${{ github.run_number }}
+          name: aura-gallery-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
