@@ -6,6 +6,8 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import android.os.Process
 import coil3.ImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
 import coil3.SingletonImageLoader
 import coil3.request.crossfade
 import dagger.hilt.android.HiltAndroidApp
@@ -15,6 +17,7 @@ import ai.sakana.aura.gallery.diagnostics.NoOpCrashReporter
 import ai.sakana.aura.gallery.diagnostics.PerformanceMetrics
 import java.io.File
 import timber.log.Timber
+import okio.Path.Companion.toOkioPath
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -56,6 +59,17 @@ class AuraGalleryApplication : Application(), SingletonImageLoader.Factory, Conf
 
     override fun newImageLoader(context: Context): ImageLoader =
         ImageLoader.Builder(context.applicationContext)
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(context.applicationContext, 0.20)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(File(context.cacheDir, "coil_image_cache").toOkioPath())
+                    .maxSizeBytes(256L * 1024L * 1024L)
+                    .build()
+            }
             .crossfade(true)
             .build()
 }

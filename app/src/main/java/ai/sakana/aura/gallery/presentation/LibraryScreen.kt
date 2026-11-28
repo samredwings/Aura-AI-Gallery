@@ -3,7 +3,9 @@ package ai.sakana.aura.gallery.presentation
 import android.content.ClipData
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.produceState
@@ -70,6 +72,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import ai.sakana.aura.gallery.BuildConfig
 import ai.sakana.aura.gallery.diagnostics.DiagnosticReportExporter
 import ai.sakana.aura.gallery.design.AuraTokens
@@ -248,6 +252,8 @@ internal fun DateGroupedMediaGrid(
     onRefresh: () -> Unit = {},
 ) {
     val gridState = rememberLazyGridState()
+    val context = LocalContext.current
+    val window = remember(context) { context.findActivityWindow() }
     val pullDistance = remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val refreshThreshold = with(density) { 72.dp.toPx() }
@@ -279,18 +285,15 @@ internal fun DateGroupedMediaGrid(
     LaunchedEffect(refreshing) {
         if (refreshing) pullDistance.floatValue = 0f
     }
-    LaunchedEffect(gridState.isScrollInProgress) {
-        if (gridState.isScrollInProgress) PerformanceMetrics.startScrollFrameMonitor()
-        else PerformanceMetrics.stopScrollFrameMonitor()
+    LaunchedEffect(gridState.isScrollInProgress, window) {
+        val activeWindow = window ?: return@LaunchedEffect
+        if (gridState.isScrollInProgress) PerformanceMetrics.startScrollFrameMonitor(activeWindow)
+        else PerformanceMetrics.stopScrollFrameMonitor(activeWindow)
     }
-    DisposableEffect(Unit) {
-        onDispose { PerformanceMetrics.stopScrollFrameMonitor() }
+    DisposableEffect(window) {
+        onDispose { window?.let(PerformanceMetrics::stopScrollFrameMonitor) }
     }
-    val groups = remember(items) {
-        items.sortedByDescending(MediaItem::dateTakenEpochMillis).groupBy { media ->
-            java.time.Instant.ofEpochMilli(media.dateTakenEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-        }
-    }
+    val groups = remember(items) { groupMediaByDate(items) }
     Box(Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         state = gridState,
@@ -300,18 +303,26 @@ internal fun DateGroupedMediaGrid(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        groups.forEach { (date, dayItems) ->
-            item(key = "date-${date}", span = { GridItemSpan(maxLineSpan) }) {
+        groups.forEach { group ->
+            item(
+                key = "date-${group.date}",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "date-header",
+            ) {
                 Row(
                     Modifier.fillMaxWidth().background(AuraTokens.Void).padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(dateHeading(date), color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Text(dayItems.size.toString(), color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text(dateHeading(group.date), color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text(group.items.size.toString(), color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
             }
-            items(dayItems, key = { it.contentUri }) { item ->
+            items(
+                items = group.items,
+                key = { it.contentUri },
+                contentType = { "media-tile" },
+            ) { item ->
                 MediaGridTile(
                     item = item,
                     selected = item.contentUri in selectedUris,
@@ -360,8 +371,15 @@ internal fun MediaGridTile(item: MediaItem, selected: Boolean, onClick: () -> Un
         if (item.isVideo) {
             VideoFrameThumbnail(item = item, modifier = Modifier.fillMaxSize())
         } else {
+            val context = LocalContext.current
+            val imageRequest = remember(item.contentUri) {
+                ImageRequest.Builder(context)
+                    .data(item.contentUri.toUri())
+                    .crossfade(false)
+                    .build()
+            }
             AsyncImage(
-                model = item.contentUri.toUri(),
+                model = imageRequest,
                 contentDescription = item.displayName ?: "Photo",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -390,8 +408,21 @@ internal fun MediaGridTile(item: MediaItem, selected: Boolean, onClick: () -> Un
 @Composable
 internal fun VideoFrameThumbnail(item: MediaItem, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = item.contentUri) {
-        value = withContext(Dispatchers.IO) { decodeVideoFrame(context, item.contentUri.toUri()) }
+    val cacheKey = remember(item.contentUri, item.dateModifiedEpochMillis, item.sizeBytes) {
+        videoThumbnailCacheKey(item)
+    }
+    val bitmap by produceState<Bitmap?>(
+        initialValue = GalleryVideoThumbnailCache.get(cacheKey),
+        key1 = cacheKey,
+    ) {
+        if (value == null) {
+            value = withContext(Dispatchers.IO) {
+                GalleryVideoThumbnailCache.get(cacheKey)
+                    ?: decodeVideoFrame(context, item.contentUri.toUri())?.also { thumbnail ->
+                        GalleryVideoThumbnailCache.put(cacheKey, thumbnail)
+                    }
+            }
+        }
     }
     if (bitmap != null) {
         Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = item.displayName ?: "Video thumbnail", modifier = modifier, contentScale = ContentScale.Crop)
@@ -402,16 +433,28 @@ internal fun VideoFrameThumbnail(item: MediaItem, modifier: Modifier = Modifier)
     }
 }
 
+private tailrec fun Context.findActivityWindow(): android.view.Window? = when (this) {
+    is Activity -> window
+    is ContextWrapper -> baseContext.findActivityWindow()
+    else -> null
+}
+
 internal fun decodeVideoFrame(context: Context, uri: Uri): Bitmap? {
     val retriever = MediaMetadataRetriever()
+    val thumbnailMaxDimensionPx = 360
     return try {
         retriever.setDataSource(context, uri)
         if (Build.VERSION.SDK_INT >= 27) {
-            retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 640, 640)
+            retriever.getScaledFrameAtTime(
+                0L,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                thumbnailMaxDimensionPx,
+                thumbnailMaxDimensionPx,
+            )
         } else {
             retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 ?.let { frame ->
-                    val scale = minOf(1f, 640f / maxOf(frame.width, frame.height))
+                    val scale = minOf(1f, thumbnailMaxDimensionPx.toFloat() / maxOf(frame.width, frame.height))
                     if (scale < 1f) Bitmap.createScaledBitmap(frame, (frame.width * scale).toInt().coerceAtLeast(1), (frame.height * scale).toInt().coerceAtLeast(1), true).also { frame.recycle() }
                     else frame
                 }
